@@ -87,6 +87,20 @@ def load_models(
     if len(soil_model.inputs) != 2:
         raise ValueError("Soil model must take 2 inputs: 'numeric' and 'crop_index'.")
 
+    # Warm up models to eliminate cold-start lag on first user click
+    try:
+        import numpy as np
+        _dummy_img = np.zeros((1, 224, 224, 3), dtype=np.float32)
+        _ = image_model(_dummy_img, training=False)
+
+        _dummy_soil = {
+            "numeric": np.zeros((1, len(SOIL_FEATURES)), dtype=np.float32),
+            "crop_index": np.zeros((1, 1), dtype=np.int32),
+        }
+        _ = soil_model(_dummy_soil, training=False)
+    except Exception:
+        pass
+
     return image_model, image_classes, soil_model
 
 

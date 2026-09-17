@@ -4,10 +4,7 @@ Utility functions for crop canonicalization, hardware detection, and agronomic h
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, Tuple
-
-from config import SOIL_CROPS
+from typing import Dict, Optional, Tuple
 
 # Canonical alias mapping for crop names
 CROP_ALIASES: dict[str, str] = {
@@ -115,7 +112,7 @@ DISEASE_TREATMENTS: dict[str, dict[str, str]] = {
 }
 
 
-def canonical_crop(value: str, strict: bool = True) -> str | None:
+def canonical_crop(value: str, strict: bool = True) -> Optional[str]:
     """
     Normalizes arbitrary crop strings, alias variants, or PlantVillage labels
     to the system standard canonical lowercase identifier.

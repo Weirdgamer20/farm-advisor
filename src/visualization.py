@@ -205,18 +205,42 @@ def render_disease_detection(leaf_result: Dict[str, Any]) -> None:
 
 def render_advisory(advisory: Dict[str, Any]) -> None:
     """
-    Renders structured agronomic recommendations.
+    Renders structured agronomic recommendations, disease root causes,
+    and soil target prescriptions.
     """
-    deviations = advisory.get("deviations", [])
-    if deviations:
-        st.markdown("#### ⚠️ Identified Soil & Environmental Deviations")
-        for dev in deviations:
-            st.markdown(f"- {dev}")
-    else:
-        st.success("All soil and environmental metrics align with empirical optimal ranges.")
+    disease_causes = advisory.get("disease_causes", [])
+    if disease_causes:
+        st.markdown("#### 🔬 Root Cause: Environmental & Soil Drivers")
+        st.info(
+            f"The AI model identified the following environmental and soil conditions "
+            f"contributing to stress and disease vulnerability for **{advisory.get('crop_display', 'this crop')}**:"
+        )
+        for cause in disease_causes:
+            st.markdown(f"- ⚠️ **{cause}**")
+
+    prescriptions = advisory.get("prescriptions", [])
+    if prescriptions:
+        st.markdown(f"#### 🧪 Target Soil Concentrations & Prescription for {advisory.get('crop_display', 'Crop')}")
+        st.caption(
+            "Optimal concentration ranges and specific fertilizer / cultural amendments needed to maximize suitability and disease resistance:"
+        )
+        presc_df = pd.DataFrame(prescriptions)
+        st.dataframe(
+            presc_df[["parameter", "current", "optimal", "status", "action"]].rename(
+                columns={
+                    "parameter": "Parameter",
+                    "current": "Your Reading",
+                    "optimal": "Target Optimal Range",
+                    "status": "Status",
+                    "action": "Corrective Action Required",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     recommendations = advisory.get("recommendations", [])
     if recommendations:
-        st.markdown("#### 📋 Actionable Agronomic Recommendations")
+        st.markdown("#### 📋 Actionable Field Guidelines")
         for rec in recommendations:
             st.markdown(f"- **{rec}**")

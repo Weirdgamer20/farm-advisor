@@ -3,29 +3,44 @@ Preprocessing module for Farmer Crop Advisory System.
 Handles image tensor transformations and soil numeric/categorical feature encoding.
 """
 
-from __future__ import annotations
+import io
+import pathlib
+from typing import Any, Dict, List, Tuple, Union
 
-from typing import Any, Dict, List, Tuple
 import numpy as np
+from PIL import Image, ImageOps
 
 from config import IMAGE_SIZE, SOIL_CROPS, SOIL_FEATURES
 from src.utils import canonical_crop
 
 
 def preprocess_image(
-    image: Any,
+    image: Union[Image.Image, str, pathlib.Path, bytes, bytearray, Any],
     target_size: tuple[int, int] = IMAGE_SIZE,
 ) -> np.ndarray:
     """
-    Transforms a PIL Image into a batched float32 NumPy tensor
-    ready for EfficientNetB0 pathology inference.
+    Transforms a PIL Image, path, byte stream, or uploaded file into a batched float32
+    NumPy tensor ready for EfficientNetB0 pathology inference.
+    Automatically applies EXIF transposition to correct phone camera orientation.
     """
-    from PIL import Image
+    if isinstance(image, Image.Image):
+        pil_img = image
+    elif hasattr(image, "getvalue"):
+        pil_img = Image.open(io.BytesIO(image.getvalue()))
+    elif isinstance(image, (bytes, bytearray)):
+        pil_img = Image.open(io.BytesIO(image))
+    elif isinstance(image, (str, pathlib.Path)):
+        pil_img = Image.open(image)
+    elif hasattr(image, "read"):
+        pil_img = Image.open(image)
+    else:
+        pil_img = Image.open(image)
 
-    if not isinstance(image, Image.Image):
-        image = Image.open(image)
+    # Correct EXIF rotation (critical for photos taken directly on smartphones)
+    pil_img = ImageOps.exif_transpose(pil_img)
 
-    rgb_image = image.convert("RGB")
+    # Ensure 3-channel standard RGB (strips alpha channel or converts 1-channel grayscale)
+    rgb_image = pil_img.convert("RGB")
     resized_image = rgb_image.resize(target_size)
     array = np.asarray(resized_image, dtype=np.float32)
     batched = np.expand_dims(array, axis=0)
