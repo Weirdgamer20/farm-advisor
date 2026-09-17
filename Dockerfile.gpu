@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         streamlit
 
 # Copy source code (models/data mounted as volumes at runtime)
-COPY config.py main.py farm_advisor.py ./
+COPY config.py main.py ./
 COPY src/ ./src/
 
 # Create volume mount points

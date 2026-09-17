@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         streamlit
 
 # Copy source code (excluding large data/models via .dockerignore)
-COPY config.py main.py farm_advisor.py ./
+COPY config.py main.py ./
 COPY src/ ./src/
 
 # Directories that will be mounted as volumes at runtime
