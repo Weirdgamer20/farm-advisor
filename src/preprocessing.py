@@ -5,10 +5,10 @@ Handles image tensor transformations and soil numeric/categorical feature encodi
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 import numpy as np
 
-from config import IMAGE_SIZE, SOIL_FEATURES, SOIL_CROPS
+from config import IMAGE_SIZE, SOIL_CROPS, SOIL_FEATURES
 from src.utils import canonical_crop
 
 
@@ -17,10 +17,14 @@ def preprocess_image(
     target_size: tuple[int, int] = IMAGE_SIZE,
 ) -> np.ndarray:
     """
-    Transforms a PIL Image into a normalized, batched float32 NumPy tensor
-    ready for EfficientNetB0 inference.
+    Transforms a PIL Image into a batched float32 NumPy tensor
+    ready for EfficientNetB0 pathology inference.
     """
     from PIL import Image
+
+    if not isinstance(image, Image.Image):
+        image = Image.open(image)
+
     rgb_image = image.convert("RGB")
     resized_image = rgb_image.resize(target_size)
     array = np.asarray(resized_image, dtype=np.float32)
@@ -33,8 +37,8 @@ def prepare_soil_inputs(
     crop: str,
 ) -> Dict[str, np.ndarray]:
     """
-    Formats raw soil and environmental readings along with crop identifier
-    into model-compatible NumPy tensors matching the dual-input architecture.
+    Formats raw soil and environmental readings along with the crop identifier
+    into model-compatible NumPy tensors matching the dual-input Keras architecture.
     """
     canonical = canonical_crop(crop)
 
@@ -44,7 +48,7 @@ def prepare_soil_inputs(
     crop_index = SOIL_CROPS.index(canonical)
 
     numeric_tensor = np.asarray(
-        [[values[feature] for feature in SOIL_FEATURES]],
+        [[float(values.get(feature, 0.0)) for feature in SOIL_FEATURES]],
         dtype=np.float32,
     )
 
@@ -57,3 +61,33 @@ def prepare_soil_inputs(
         "numeric": numeric_tensor,
         "crop_index": crop_id_tensor,
     }
+
+
+def validate_soil_readings(values: Dict[str, float]) -> Tuple[bool, List[str]]:
+    """
+    Validates user-provided soil parameters against agronomically feasible ranges.
+    Returns (is_valid, list_of_warning_messages).
+    """
+    warnings: List[str] = []
+
+    limits = {
+        "N": (0.0, 500.0, "Nitrogen"),
+        "P": (0.0, 500.0, "Phosphorus"),
+        "K": (0.0, 500.0, "Potassium"),
+        "temperature": (-15.0, 65.0, "Temperature"),
+        "humidity": (0.0, 100.0, "Relative Humidity"),
+        "ph": (0.0, 14.0, "Soil pH"),
+        "rainfall": (0.0, 4000.0, "Annual Rainfall"),
+    }
+
+    for feature, (low, high, label) in limits.items():
+        if feature not in values:
+            warnings.append(f"Missing parameter: {label} ({feature})")
+            continue
+
+        val = values[feature]
+        if val < low or val > high:
+            warnings.append(f"{label} ({val}) is outside normal range [{low}, {high}].")
+
+    is_valid = len(warnings) == 0
+    return is_valid, warnings
