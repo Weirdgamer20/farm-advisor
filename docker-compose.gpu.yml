@@ -1,0 +1,39 @@
+# Farmer Crop Advisory System — Docker Compose (GPU)
+# Usage: docker compose -f docker-compose.gpu.yml up
+#
+# PREREQUISITE (one-time setup — do NOT skip):
+#   Step 1: Install nvidia-container-toolkit in WSL Ubuntu:
+#     sudo apt-get update
+#     sudo apt-get install -y nvidia-container-toolkit
+#     sudo nvidia-ctk runtime configure --runtime=docker
+#     sudo systemctl restart docker
+#   Step 2: Verify:
+#     docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+
+services:
+  farm-advisor-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: farm-advisor:gpu
+    container_name: farm_advisor_gpu
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

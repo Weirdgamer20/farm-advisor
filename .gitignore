@@ -1,0 +1,33 @@
+# Python Virtual Environments
+.venv/
+.venv-gpu/
+venv/
+env/
+ENV/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging / archives
+AI3000.zip
+*.zip
+*.tar.gz
+*.egg-info/
+dist/
+build/
+
+# Jupyter / Checkpoints
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Large binary assets (datasets and trained models)
+# Use DVC, Git LFS, or cloud storage for these
+data/raw/
+models/

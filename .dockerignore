@@ -1,0 +1,55 @@
+# ============================================================
+# Docker ignore — keeps image small by excluding large files
+# ============================================================
+
+# Virtual environments (NEVER ship these in images)
+.venv/
+.venv-gpu/
+venv/
+env/
+
+# Large archives
+AI3000.zip
+*.zip
+*.tar.gz
+
+# Dataset images (too large — mounted as volume at runtime)
+data/raw/Plant Village Dataset/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Outputs (mounted as volume at runtime)
+outputs/
+
+# Docs (not needed at runtime)
+docs/
+
+# Training scripts (not needed to run the web app)
+train_image_model.py
+train_soil_model.py
+src/train_image_model.py
+src/train_soil_model.py
+run_training.bat
+run_web_ui.bat
+run_webui.bat
+
+# Batch launchers
+*.bat
+
+# Implementation notes
+implementation_plan.md
+walkthrough.md

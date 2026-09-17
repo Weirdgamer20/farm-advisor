@@ -1,0 +1,8 @@
+tensorflow[and-cuda]==2.21.0
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+pillow
+streamlit

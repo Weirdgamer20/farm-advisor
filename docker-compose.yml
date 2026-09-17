@@ -1,0 +1,27 @@
+# Farmer Crop Advisory System — Docker Compose (CPU)
+# Usage: docker compose up
+# Mounts models/ and data/ from your local D:\PROJECT as read-only volumes.
+
+services:
+  farm-advisor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: farm-advisor:cpu
+    container_name: farm_advisor_cpu
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount trained model artifacts (read-only — never overwrite from container)
+      - ./models:/app/models:ro
+      # Mount raw dataset (read-only)
+      - ./data:/app/data:ro
+      # Mount outputs as read-write so container can save figures/reports
+      - ./outputs:/app/outputs:rw
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

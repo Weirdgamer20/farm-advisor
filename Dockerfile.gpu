@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1
+# ============================================================
+# Farmer Crop Advisory System — GPU Docker Image
+# ============================================================
+# Requires: nvidia-container-toolkit installed in WSL Ubuntu
+#   sudo apt-get install -y nvidia-container-toolkit
+#   sudo nvidia-ctk runtime configure --runtime=docker
+#   sudo systemctl restart docker
+#
+# Base: TensorFlow 2.21.0 official GPU image (CUDA 12.3 + cuDNN 8)
+# Image: ~8 GB after build
+# ============================================================
+
+FROM tensorflow/tensorflow:2.21.0-gpu
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+WORKDIR /app
+
+# Install additional Python packages (TF already in base image)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+        pandas \
+        scikit-learn \
+        matplotlib \
+        seaborn \
+        pillow \
+        streamlit
+
+# Copy source code (models/data mounted as volumes at runtime)
+COPY config.py main.py farm_advisor.py ./
+COPY src/ ./src/
+
+# Create volume mount points
+RUN mkdir -p models data/raw data/processed outputs/figures outputs/reports outputs/predictions
+
+# Change ownership
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8501
+
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
+    STREAMLIT_SERVER_PORT=8501 \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    STREAMLIT_SERVER_HEADLESS=true \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')" || exit 1
+
+CMD ["python", "-m", "streamlit", "run", "main.py", "--server.address=0.0.0.0", "--server.port=8501"]
