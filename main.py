@@ -10,11 +10,8 @@ Modular, production-grade interface providing:
 from __future__ import annotations
 
 import hashlib
-import json
-import pathlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
-import numpy as np
 import pandas as pd
 from PIL import Image
 import streamlit as st
@@ -30,11 +27,9 @@ from src.analysis import (
 from src.data_loader import (
     check_artifact_availability,
     get_sample_images,
-    load_crop_data,
     load_models,
     load_soil_profiles,
 )
-from src.preprocessing import validate_soil_readings
 from src.utils import canonical_crop, pretty_crop, setup_device
 from src.visualization import (
     format_status_badge,
@@ -62,13 +57,9 @@ st.set_page_config(
 
 inject_custom_theme()
 
-# Non-blocking hardware acceleration detection
 gpu_active, device_msg = setup_device()
-
-# Telemetry inspection for diagnostics
 telemetry = check_artifact_availability()
 
-# Model loading with graceful diagnostic feedback
 models_ready = False
 model_init_error: Optional[str] = None
 try:
@@ -77,10 +68,7 @@ try:
     models_ready = True
 except Exception as exc:
     model_init_error = str(exc)
-    image_model = None
-    image_classes = []
-    soil_model = None
-    soil_profiles = {}
+    image_model, image_classes, soil_model, soil_profiles = None, [], None, {}
 
 render_system_status_sidebar(gpu_active, device_msg, models_ready, detailed_telemetry=telemetry)
 render_header()
@@ -95,8 +83,8 @@ if not models_ready and model_init_error:
 # 2. SESSION STATE MANAGEMENT (No Unnecessary Startup Inference)
 # ============================================================
 
-if "soil_readings" not in st.session_state:
-    st.session_state["soil_readings"] = {
+session_defaults = {
+    "soil_readings": {
         "N": 90.0,
         "P": 42.0,
         "K": 43.0,
@@ -104,28 +92,17 @@ if "soil_readings" not in st.session_state:
         "humidity": 80.0,
         "ph": 6.5,
         "rainfall": 200.0,
-    }
-
-if "target_crop" not in st.session_state:
-    st.session_state["target_crop"] = "tomato"
-
-if "leaf_result" not in st.session_state:
-    st.session_state["leaf_result"] = None
-
-if "leaf_image" not in st.session_state:
-    st.session_state["leaf_image"] = None
-
-if "soil_result" not in st.session_state:
-    st.session_state["soil_result"] = None
-
-if "ranked_crops" not in st.session_state:
-    st.session_state["ranked_crops"] = None
-
-if "diagnostics" not in st.session_state:
-    st.session_state["diagnostics"] = None
-
-if "cached_soil_hash" not in st.session_state:
-    st.session_state["cached_soil_hash"] = None
+    },
+    "target_crop": "tomato",
+    "leaf_result": None,
+    "leaf_image": None,
+    "soil_result": None,
+    "ranked_crops": None,
+    "diagnostics": None,
+    "cached_soil_hash": None,
+}
+for key, val in session_defaults.items():
+    st.session_state.setdefault(key, val)
 
 
 def compute_soil_hash(crop: str, readings: Dict[str, float]) -> str:
@@ -164,53 +141,42 @@ if current_page == "🏠 Dashboard":
         "crop suitability modeling and rule-based agronomic guidance."
     )
 
-    # 3 High-Impact Capability Cards
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(
-            """
-            <div class="advisory-card" style="border-top: 4px solid #2d6a4f;">
-                <h3>🧪 Soil & Crop Advisory</h3>
-                <p>
-                    Evaluates 7 soil nutrients and climate parameters against 9 crop profiles using dual-input neural modeling and empirical quantiles.
-                </p>
-                <span style="color: #2d6a4f; font-weight: 600; font-size: 0.88rem;">Numerical Deep Learning →</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    overview_cards = [
+        (
+            "🧪 Soil & Crop Advisory",
+            "Evaluates 7 soil nutrients and climate parameters against 9 crop profiles using dual-input neural modeling and empirical quantiles.",
+            "Numerical Deep Learning →",
+            "#2d6a4f",
+        ),
+        (
+            "🍃 Leaf Disease Detection",
+            "EfficientNetB0 vision model trained on 38 PlantVillage pathology classes with calibrated diagnostic confidence and treatment protocols.",
+            "Computer Vision Inference →",
+            "#40916c",
+        ),
+        (
+            "📋 Integrated Farm Advisory",
+            "Synthesizes foliar disease diagnosis with field soil readings to detect environmental infection drivers and formulate precise corrective amendments.",
+            "Agronomic Prescriptions →",
+            "#52b788",
+        ),
+    ]
 
-    with c2:
-        st.markdown(
-            """
-            <div class="advisory-card" style="border-top: 4px solid #40916c;">
-                <h3>🍃 Leaf Disease Detection</h3>
-                <p>
-                    EfficientNetB0 vision model trained on 38 PlantVillage pathology classes with calibrated diagnostic confidence and treatment protocols.
-                </p>
-                <span style="color: #40916c; font-weight: 600; font-size: 0.88rem;">Computer Vision Inference →</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with c3:
-        st.markdown(
-            """
-            <div class="advisory-card" style="border-top: 4px solid #52b788;">
-                <h3>📋 Integrated Farm Advisory</h3>
-                <p>
-                    Synthesizes foliar disease diagnosis with field soil readings to detect environmental infection drivers and formulate precise corrective amendments.
-                </p>
-                <span style="color: #52b788; font-weight: 600; font-size: 0.88rem;">Agronomic Prescriptions →</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    for col, (title, desc, tag, border_color) in zip(st.columns(3), overview_cards):
+        with col:
+            st.markdown(
+                f"""
+                <div class="advisory-card" style="border-top: 4px solid {border_color};">
+                    <h3>{title}</h3>
+                    <p>{desc}</p>
+                    <span style="color: {border_color}; font-weight: 600; font-size: 0.88rem;">{tag}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Operational Status & Model Architecture Breakdown
     col_sys, col_info = st.columns([1, 1], gap="large")
     with col_sys:
         st.markdown("### 🖥️ Operational System Status")
@@ -235,7 +201,6 @@ if current_page == "🏠 Dashboard":
             """
         )
 
-    # Workflow Architecture Diagram
     render_workflow_diagram()
     render_disclaimer()
 
@@ -312,7 +277,6 @@ elif current_page == "🧪 Soil & Crop Advisory":
             st.markdown("<br>", unsafe_allow_html=True)
             analyze_btn = st.button("⚡ Run Soil & Crop Analysis", use_container_width=True, type="primary")
 
-    # Current readings payload
     current_readings = {
         "N": float(nitrogen),
         "P": float(phosphorus),
@@ -324,10 +288,8 @@ elif current_page == "🧪 Soil & Crop Advisory":
     }
     st.session_state["soil_readings"] = current_readings
     st.session_state["target_crop"] = target_crop_sel
-
     current_hash = compute_soil_hash(target_crop_sel, current_readings)
 
-    # Execute inference only when requested or if no prior results exist
     if models_ready:
         if analyze_btn or st.session_state["soil_result"] is None:
             if st.session_state["cached_soil_hash"] != current_hash:
@@ -344,11 +306,8 @@ elif current_page == "🧪 Soil & Crop Advisory":
         if soil_res and ranked_crops:
             st.markdown("---")
             st.markdown("### 🏆 Alternative Crop Suitability Rankings")
-            
-            # Top-3 Recommended Crops Cards
-            top_3 = ranked_crops[:3]
-            rc1, rc2, rc3 = st.columns(3)
-            for idx, (col, item) in enumerate(zip([rc1, rc2, rc3], top_3)):
+
+            for idx, (col, item) in enumerate(zip(st.columns(3), ranked_crops[:3])):
                 with col:
                     badge = format_status_badge(item["status"])
                     st.markdown(
@@ -364,8 +323,6 @@ elif current_page == "🧪 Soil & Crop Advisory":
                     )
 
             st.markdown("<br>", unsafe_allow_html=True)
-
-            # Analytics Tabs
             tab_ranks, tab_params = st.tabs(["📊 Crop Ranking Overview", "📈 Soil & Climate Diagnostic Breakdown"])
             with tab_ranks:
                 fig_ranks = plot_crop_recommendations(ranked_crops)
@@ -379,9 +336,8 @@ elif current_page == "🧪 Soil & Crop Advisory":
                         st.pyplot(fig_diag, use_container_width=True)
 
                     st.markdown("#### Detailed Empirical Quantile Deviations")
-                    df_diag = pd.DataFrame(diagnostics)
                     st.dataframe(
-                        df_diag[["Parameter", "Value", "Optimal_Range", "Status", "Analysis"]],
+                        pd.DataFrame(diagnostics)[["Parameter", "Value", "Optimal_Range", "Status", "Analysis"]],
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -413,9 +369,7 @@ elif current_page == "🍃 Leaf Disease Detection":
         chosen_image: Optional[Image.Image] = None
 
         if source_mode == "Dataset Sample Library":
-            # Optimized cached sample image scan
             sample_files = get_sample_images(config.TEST_DIR)
-
             if sample_files:
                 sample_map = {p.name: p for p in sample_files[:30]}
                 selected_sample = st.selectbox("Choose a test sample leaf:", list(sample_map.keys()))
@@ -423,7 +377,6 @@ elif current_page == "🍃 Leaf Disease Detection":
                     chosen_image = Image.open(sample_map[selected_sample])
             else:
                 st.info("Dataset samples directory `data/raw/Plant Village Dataset/Test` not found.")
-
         else:
             uploaded_file = st.file_uploader(
                 "Upload a leaf image (JPEG, PNG):",
@@ -441,7 +394,6 @@ elif current_page == "🍃 Leaf Disease Detection":
 
     with col_pred:
         if st.session_state["leaf_image"] is not None and models_ready:
-            # Only run inference on explicit button click or if no prior result exists
             if analyze_leaf_btn or st.session_state["leaf_result"] is None:
                 with st.spinner("Running EfficientNetB0 vision inference..."):
                     leaf_res = classify_leaf(image_model, st.session_state["leaf_image"], image_classes)
@@ -467,7 +419,6 @@ elif current_page == "📋 Integrated Farm Advisory":
         target_crop = st.session_state["target_crop"]
         readings = st.session_state["soil_readings"]
 
-        # Ensure analysis has been performed
         if st.session_state["soil_result"] is None:
             with st.spinner("Synthesizing current soil readings and empirical quantiles..."):
                 st.session_state["soil_result"] = predict_soil(soil_model, readings, target_crop)
@@ -487,53 +438,31 @@ elif current_page == "📋 Integrated Farm Advisory":
             values=readings,
         )
 
-        # Overview Summary Banner Cards
-        s1, s2, s3 = st.columns(3)
-        with s1:
-            st.markdown(
-                f"""
-                <div class="advisory-card" style="border-left: 5px solid #2d6a4f;">
-                    <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">PRIMARY TARGET CROP</div>
-                    <div style="font-size: 1.3rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{pretty_crop(target_crop)}</div>
-                    <span style="font-size: 0.88rem; color: #495057;">Suitability: <strong>{soil_res['score']:.1f} / 100</strong></span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        disease_display = leaf_res["disease"] if leaf_res else "No Leaf Analyzed (Presuming Baseline)"
+        disease_badge = format_status_badge("NORMAL" if "healthy" in disease_display.lower() else "NEEDS ATTENTION")
 
-        with s2:
-            soil_badge = format_status_badge(soil_res["status"])
-            st.markdown(
-                f"""
-                <div class="advisory-card" style="border-left: 5px solid #1d3557;">
-                    <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">SOIL ENVIRONMENT STATUS</div>
-                    <div style="margin: 6px 0;">{soil_badge}</div>
-                    <span style="font-size: 0.85rem; color: #495057;">Conditioned on 7 soil & climate features</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        summary_cards = [
+            ("PRIMARY TARGET CROP", pretty_crop(target_crop), f"Suitability: <strong>{soil_res['score']:.1f} / 100</strong>", "#2d6a4f"),
+            ("SOIL ENVIRONMENT STATUS", format_status_badge(soil_res["status"]), "Conditioned on 7 soil & climate features", "#1d3557"),
+            ("FOLIAR PATHOLOGY STATUS", f"<div style='font-size: 1.1rem; font-weight: 700; color: #1b4332; margin: 4px 0;'>{disease_display}</div>{disease_badge}", "Pathology assessment", "#e76f51"),
+        ]
 
-        with s3:
-            disease_display = leaf_res["disease"] if leaf_res else "No Leaf Analyzed (Presuming Baseline)"
-            disease_badge = format_status_badge("NORMAL" if "healthy" in disease_display.lower() else "NEEDS ATTENTION")
-            st.markdown(
-                f"""
-                <div class="advisory-card" style="border-left: 5px solid #e76f51;">
-                    <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">FOLIAR PATHOLOGY STATUS</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{disease_display}</div>
-                    <div>{disease_badge}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        for col, (label, content, footer, border_color) in zip(st.columns(3), summary_cards):
+            with col:
+                st.markdown(
+                    f"""
+                    <div class="advisory-card" style="border-left: 5px solid {border_color};">
+                        <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">{label}</div>
+                        <div style="font-size: 1.3rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{content}</div>
+                        <span style="font-size: 0.85rem; color: #495057;">{footer}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         st.markdown("<br>", unsafe_allow_html=True)
-
-        # Full Rendered Advisory
         render_advisory(advisory)
 
-        # Crop Rotation Insights
         st.markdown("---")
         st.markdown("#### 🌾 Crop Rotation & Agro-Ecological Optimization")
         alt_crop = ranked[0]

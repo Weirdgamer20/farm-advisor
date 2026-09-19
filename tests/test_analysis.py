@@ -4,10 +4,8 @@ Tests soil diagnostics, advisory generation, root cause correlation, and prescri
 """
 
 import unittest
-from typing import Any, Dict
-import numpy as np
 
-from config import SOIL_CROPS, SOIL_FEATURES
+from config import SOIL_FEATURES
 from src.analysis import diagnose_soil, generate_advisory_summary
 
 

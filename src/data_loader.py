@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from config import (
-    CROP_DATA,
     CSV_CANDIDATES,
     DISEASE_CLASSES,
     DISEASE_MODEL,
@@ -46,20 +45,17 @@ def check_artifact_availability() -> Dict[str, Dict[str, Any]]:
     Non-blocking inspection of all required disk artifacts and datasets.
     Provides structured diagnostic telemetry for UI status and error reporting.
     """
-    vision_model_path = DISEASE_MODEL
-    if not vision_model_path.exists():
-        if IMAGE_CPU_BEST_PATH.exists():
-            vision_model_path = IMAGE_CPU_BEST_PATH
-        elif IMAGE_BACKUP_PATH.exists():
-            vision_model_path = IMAGE_BACKUP_PATH
+    vision_path = DISEASE_MODEL
+    if not vision_path.exists():
+        vision_path = IMAGE_CPU_BEST_PATH if IMAGE_CPU_BEST_PATH.exists() else IMAGE_BACKUP_PATH
 
     csv_path = next((p for p in CSV_CANDIDATES if p.exists()), None)
 
     return {
         "disease_model": {
             "name": "Plant Pathology Vision Model",
-            "path": str(vision_model_path),
-            "exists": vision_model_path.exists(),
+            "path": str(vision_path),
+            "exists": vision_path.exists(),
         },
         "disease_classes": {
             "name": "Disease Class Taxonomy",
@@ -94,36 +90,25 @@ def load_models(
     """
     Loads and validates the trained leaf disease model and soil suitability neural network.
     Gracefully falls back to backup model artifacts if primary weights are missing.
-    Warmup pass is optional to prevent blocking application startup.
     """
     import tensorflow as tf
 
-    # Verify vision model path with fallback hierarchy
     target_image_model_path = image_model_path
     if not target_image_model_path.exists():
         if IMAGE_CPU_BEST_PATH.exists():
             target_image_model_path = IMAGE_CPU_BEST_PATH
-            logger.info(f"Using CPU-best vision model fallback: {IMAGE_CPU_BEST_PATH}")
         elif IMAGE_BACKUP_PATH.exists():
             target_image_model_path = IMAGE_BACKUP_PATH
-            logger.info(f"Using backup vision model fallback: {IMAGE_BACKUP_PATH}")
         else:
             raise FileNotFoundError(
-                f"Plant pathology vision model artifact not found at primary ({image_model_path}) "
-                f"or fallback locations ({IMAGE_CPU_BEST_PATH}, {IMAGE_BACKUP_PATH})."
+                f"Vision model artifact not found at {image_model_path} or fallbacks."
             )
 
     if not image_classes_path.exists():
-        raise FileNotFoundError(
-            f"Plant pathology class labels JSON file not found at: {image_classes_path}"
-        )
-
+        raise FileNotFoundError(f"Disease classes JSON not found at: {image_classes_path}")
     if not soil_model_path.exists():
-        raise FileNotFoundError(
-            f"Soil condition neural network artifact not found at: {soil_model_path}"
-        )
+        raise FileNotFoundError(f"Soil model artifact not found at: {soil_model_path}")
 
-    # Load neural models and labels
     try:
         image_model = tf.keras.models.load_model(target_image_model_path)
     except Exception as exc:
@@ -138,9 +123,8 @@ def load_models(
         with image_classes_path.open("r", encoding="utf-8") as f:
             image_classes: List[str] = json.load(f)
     except Exception as exc:
-        raise RuntimeError(f"Failed reading disease classes JSON from {image_classes_path}: {exc}")
+        raise RuntimeError(f"Failed reading disease classes from {image_classes_path}: {exc}")
 
-    # Architecture validation checks
     if image_model.output_shape[-1] != len(image_classes):
         raise ValueError(
             f"Vision model output count ({image_model.output_shape[-1]}) does not match "
@@ -148,20 +132,19 @@ def load_models(
         )
 
     if len(soil_model.inputs) != 2:
-        raise ValueError(
-            f"Soil model requires 2 inputs ('numeric', 'crop_index'), but got {len(soil_model.inputs)}."
-        )
+        raise ValueError(f"Soil model requires 2 inputs, got {len(soil_model.inputs)}.")
 
     if warmup:
         try:
             import numpy as np
-            _dummy_img = np.zeros((1, 224, 224, 3), dtype=np.float32)
-            _ = image_model(_dummy_img, training=False)
-            _dummy_soil = {
-                "numeric": np.zeros((1, len(SOIL_FEATURES)), dtype=np.float32),
-                "crop_index": np.zeros((1, 1), dtype=np.int32),
-            }
-            _ = soil_model(_dummy_soil, training=False)
+            _ = image_model(np.zeros((1, 224, 224, 3), dtype=np.float32), training=False)
+            _ = soil_model(
+                {
+                    "numeric": np.zeros((1, len(SOIL_FEATURES)), dtype=np.float32),
+                    "crop_index": np.zeros((1, 1), dtype=np.int32),
+                },
+                training=False,
+            )
         except Exception:
             pass
 
@@ -179,7 +162,7 @@ def get_sample_images(sample_dir: Optional[pathlib.Path] = None) -> List[pathlib
 
     discovered: List[pathlib.Path] = []
     for ext in ("*.jpg", "*.jpeg", "*.JPG", "*.png"):
-        discovered.extend(list(target_dir.rglob(ext)))
+        discovered.extend(target_dir.rglob(ext))
 
     return sorted(discovered)
 
@@ -189,36 +172,25 @@ def load_crop_data(csv_path: Optional[pathlib.Path] = None) -> Optional[pd.DataF
     """
     Loads and validates the crop recommendation dataset used for empirical quantile diagnostics.
     """
-    target_path = csv_path
-    if target_path is None:
-        target_path = next((p for p in CSV_CANDIDATES if p.exists()), None)
-
-    if target_path is None or not target_path.exists():
+    target = csv_path or next((p for p in CSV_CANDIDATES if p.exists()), None)
+    if target is None or not target.exists():
         return None
 
     try:
-        df = pd.read_csv(target_path)
+        df = pd.read_csv(target)
         df.columns = [str(c).strip() for c in df.columns]
-
-        required_columns = SOIL_FEATURES + ["crop"]
-        if not all(c in df.columns for c in required_columns):
+        required = SOIL_FEATURES + ["crop"]
+        if not all(c in df.columns for c in required):
             return None
 
         for feature in SOIL_FEATURES:
             df[feature] = pd.to_numeric(df[feature], errors="coerce")
 
         df["crop"] = df["crop"].map(lambda v: canonical_crop(v, strict=False))
-        return df.dropna(subset=required_columns)
+        return df.dropna(subset=required)
     except Exception as exc:
         logger.warning(f"Error reading crop dataset: {exc}")
         return None
-
-
-def load_profile_data(csv_path: Optional[pathlib.Path] = None) -> Optional[pd.DataFrame]:
-    """
-    Backward-compatible alias for load_crop_data.
-    """
-    return load_crop_data(csv_path)
 
 
 @cache_data

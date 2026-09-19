@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from config import IMAGE_SIZE, SOIL_CROPS, SOIL_FEATURES
+from config import SOIL_CROPS, SOIL_FEATURES
 from src.preprocessing import (
     prepare_soil_inputs,
     preprocess_image,

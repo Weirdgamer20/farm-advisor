@@ -4,10 +4,9 @@ Tests canonical crop normalization, pretty formatting, disease treatment lookups
 """
 
 import unittest
+
 from config import SOIL_CROPS
 from src.utils import (
-    CROP_ALIASES,
-    PRETTY_CROP_NAMES,
     canonical_crop,
     get_disease_treatment,
     pretty_crop,

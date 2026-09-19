@@ -7,7 +7,7 @@ workflow architecture visualizations, and harmonized publication-grade Matplotli
 from __future__ import annotations
 
 import pathlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -18,26 +18,6 @@ try:
     import streamlit as st
 except ImportError:
     st = None
-
-# ============================================================
-# DESIGN SYSTEM TOKENS & COLOR PALETTE
-# ============================================================
-
-THEME_COLORS = {
-    "primary": "#2d6a4f",
-    "primary_dark": "#1b4332",
-    "primary_light": "#d8f3dc",
-    "primary_soft": "#e8f5ed",
-    "text_dark": "#1b2d24",
-    "text_muted": "#495057",
-    "card_bg": "#ffffff",
-    "card_border": "#d2e3d8",
-    "status_good": "#2d6a4f",
-    "status_acceptable": "#1d3557",
-    "status_attention": "#e76f51",
-    "status_unsuitable": "#d62828",
-    "status_neutral": "#6c757d",
-}
 
 
 def inject_custom_theme() -> None:
@@ -51,12 +31,7 @@ def inject_custom_theme() -> None:
     st.markdown(
         """
         <style>
-        /* Base typography and background refinement */
-        .stApp {
-            color: #1b2d24;
-        }
-
-        /* Centralized Component Styles */
+        .stApp { color: #1b2d24; }
         .advisory-header {
             background: linear-gradient(135deg, #1b4332 0%, #2d6a4f 100%);
             border-radius: 10px;
@@ -65,17 +40,8 @@ def inject_custom_theme() -> None:
             color: #ffffff;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
         }
-        .advisory-header h1 {
-            color: #d8f3dc !important;
-            margin: 0;
-            font-size: 2.1rem;
-            font-weight: 700;
-        }
-        .advisory-header p {
-            color: #cce3d5 !important;
-            margin: 6px 0 0 0;
-            font-size: 1.02rem;
-        }
+        .advisory-header h1 { color: #d8f3dc !important; margin: 0; font-size: 2.1rem; font-weight: 700; }
+        .advisory-header p { color: #cce3d5 !important; margin: 6px 0 0 0; font-size: 1.02rem; }
 
         .advisory-card {
             background-color: #ffffff;
@@ -86,18 +52,8 @@ def inject_custom_theme() -> None:
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
             margin-bottom: 16px;
         }
-        .advisory-card h3, .advisory-card h4 {
-            color: #1b4332 !important;
-            margin-top: 0;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        .advisory-card p {
-            color: #495057;
-            font-size: 0.92rem;
-            line-height: 1.45;
-            margin-bottom: 10px;
-        }
+        .advisory-card h3, .advisory-card h4 { color: #1b4332 !important; margin-top: 0; margin-bottom: 8px; font-weight: 600; }
+        .advisory-card p { color: #495057; font-size: 0.92rem; line-height: 1.45; margin-bottom: 10px; }
 
         .ranking-card {
             background-color: #ffffff;
@@ -108,24 +64,9 @@ def inject_custom_theme() -> None:
             color: #1b2d24;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
         }
-        .ranking-card .rank-tag {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: #6c757d;
-            letter-spacing: 0.5px;
-        }
-        .ranking-card .crop-title {
-            color: #1b4332;
-            font-size: 1.25rem;
-            font-weight: 700;
-            margin: 4px 0;
-        }
-        .ranking-card .score-value {
-            font-size: 1.65rem;
-            font-weight: 700;
-            color: #2d6a4f;
-            margin: 4px 0;
-        }
+        .ranking-card .rank-tag { font-size: 0.8rem; font-weight: 700; color: #6c757d; letter-spacing: 0.5px; }
+        .ranking-card .crop-title { color: #1b4332; font-size: 1.25rem; font-weight: 700; margin: 4px 0; }
+        .ranking-card .score-value { font-size: 1.65rem; font-weight: 700; color: #2d6a4f; margin: 4px 0; }
 
         .system-status-box {
             background-color: #f4f7f5;
@@ -136,14 +77,8 @@ def inject_custom_theme() -> None:
             font-size: 0.88rem;
             margin-top: 10px;
         }
-        .system-status-box .status-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-        }
-        .system-status-box .status-row:last-child {
-            margin-bottom: 0;
-        }
+        .system-status-box .status-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .system-status-box .status-row:last-child { margin-bottom: 0; }
 
         .workflow-container {
             display: flex;
@@ -167,11 +102,7 @@ def inject_custom_theme() -> None:
             font-size: 0.88rem;
             text-align: center;
         }
-        .workflow-arrow {
-            color: #2d6a4f;
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
+        .workflow-arrow { color: #2d6a4f; font-weight: bold; font-size: 1.1rem; }
 
         .disclaimer-box {
             background-color: #fef9e7;
@@ -190,18 +121,14 @@ def inject_custom_theme() -> None:
 
 
 def render_header() -> None:
-    """
-    Renders the agricultural application banner.
-    """
+    """Renders the agricultural application banner."""
     if st is None:
         return
     st.markdown(
         """
         <div class="advisory-header">
             <h1>🌱 Farmer Crop Advisory System</h1>
-            <p>
-                Decision Support: Crop Suitability Neural Modeling & Computer Vision Leaf Pathology Diagnosis
-            </p>
+            <p>Decision Support: Crop Suitability Neural Modeling & Computer Vision Leaf Pathology Diagnosis</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -214,10 +141,7 @@ def render_system_status_sidebar(
     models_ready: bool,
     detailed_telemetry: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """
-    Renders a subtle, non-intrusive system status card in the sidebar.
-    Guarantees that CPU fallback is displayed neutrally rather than as an error.
-    """
+    """Renders a subtle, non-intrusive system status card in the sidebar."""
     if st is None:
         return
 
@@ -257,17 +181,8 @@ def render_system_status_sidebar(
                     st.caption(f"`{v.get('path')}`")
 
 
-def render_device_status(gpu_active: bool, device_msg: str, models_ready: bool = True) -> None:
-    """
-    Backward-compatible alias for render_system_status_sidebar.
-    """
-    render_system_status_sidebar(gpu_active, device_msg, models_ready)
-
-
 def render_disclaimer() -> None:
-    """
-    Renders the agricultural decision-support disclaimer.
-    """
+    """Renders the agricultural decision-support disclaimer."""
     if st is None:
         return
     st.markdown(
@@ -283,9 +198,7 @@ def render_disclaimer() -> None:
 
 
 def render_workflow_diagram() -> None:
-    """
-    Renders the step-by-step decision architecture workflow.
-    """
+    """Renders the step-by-step decision architecture workflow."""
     if st is None:
         return
     st.markdown("### 🔄 Decision Engine Architecture")
@@ -308,10 +221,7 @@ def render_workflow_diagram() -> None:
 
 
 def format_status_badge(status: str) -> str:
-    """
-    Returns a high-contrast HTML badge string with explicit white text on semantic backgrounds.
-    """
-    status_upper = str(status).strip().upper()
+    """Returns a high-contrast HTML badge string with explicit white text on semantic backgrounds."""
     badge_colors = {
         "GOOD": "#2d6a4f",
         "SUITABLE": "#2d6a4f",
@@ -326,7 +236,7 @@ def format_status_badge(status: str) -> str:
         "SLIGHTLY LOW": "#d35400",
         "SLIGHTLY HIGH": "#2980b9",
     }
-    color = badge_colors.get(status_upper, "#495057")
+    color = badge_colors.get(str(status).strip().upper(), "#495057")
     return (
         f'<span style="background-color: {color}; color: #ffffff !important; padding: 4px 10px; '
         f'border-radius: 4px; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.5px; display: inline-block;">'
@@ -334,14 +244,35 @@ def format_status_badge(status: str) -> str:
     )
 
 
+def _setup_barh_plot(height: float, title: str, xlabel: str) -> Tuple[plt.Figure, plt.Axes]:
+    """Helper creating a harmonized, theme-styled horizontal bar figure and axis."""
+    fig, ax = plt.subplots(figsize=(7.8, height), dpi=100)
+    fig.patch.set_facecolor("#ffffff")
+    ax.set_facecolor("#fafbfc")
+    ax.set_xlabel(xlabel, fontsize=9.5, fontweight="bold", color="#1b2d24")
+    ax.set_title(title, fontsize=10.5, fontweight="bold", color="#1b4332", pad=12)
+    ax.tick_params(colors="#1b2d24", labelsize=9)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax.spines[s].set_color("#ced4da")
+    ax.grid(axis="x", linestyle="--", alpha=0.35, color="#ced4da")
+    return fig, ax
+
+
+def _finalize_plot(fig: plt.Figure, save_path: Optional[pathlib.Path] = None) -> plt.Figure:
+    """Helper completing layout tight pack and saving."""
+    plt.tight_layout()
+    if save_path:
+        fig.savefig(save_path, bbox_inches="tight")
+    return fig
+
+
 def plot_soil_parameters_bar(
     diagnostics: List[Dict[str, Any]],
     save_path: Optional[pathlib.Path] = None,
 ) -> Optional[plt.Figure]:
-    """
-    Generates a horizontal bar chart highlighting normal vs deviated soil parameters,
-    harmonized with the application theme tokens.
-    """
+    """Generates a horizontal bar chart highlighting normal vs deviated soil parameters."""
     if not diagnostics:
         return None
 
@@ -358,27 +289,17 @@ def plot_soil_parameters_bar(
     }
     colors = [color_map.get(s, "#7f8c8d") for s in statuses]
 
-    fig, ax = plt.subplots(figsize=(7.8, 3.8), dpi=100)
-    fig.patch.set_facecolor("#ffffff")
-    ax.set_facecolor("#fafbfc")
-
+    fig, ax = _setup_barh_plot(
+        height=3.8,
+        title="Soil & Climate Reading Diagnostic Breakdown",
+        xlabel="Measured Soil / Climate Value",
+    )
     bars = ax.barh(parameters, values, color=colors, edgecolor="#1b2d24", alpha=0.9, height=0.55)
-
-    ax.set_xlabel("Measured Soil / Climate Value", fontsize=9.5, fontweight="bold", color="#1b2d24")
-    ax.set_title("Soil & Climate Reading Diagnostic Breakdown", fontsize=10.5, fontweight="bold", color="#1b4332", pad=12)
-    ax.tick_params(colors="#1b2d24", labelsize=9)
-
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#ced4da")
-    ax.spines["bottom"].set_color("#ced4da")
-    ax.grid(axis="x", linestyle="--", alpha=0.35, color="#ced4da")
 
     max_val = max(values) if values else 1.0
     for bar, status in zip(bars, statuses):
-        width = bar.get_width()
         ax.text(
-            width + max_val * 0.02,
+            bar.get_width() + max_val * 0.02,
             bar.get_y() + bar.get_height() / 2,
             f"{status}",
             va="center",
@@ -388,60 +309,36 @@ def plot_soil_parameters_bar(
             color="#1b4332",
         )
 
-    plt.tight_layout()
-
-    if save_path:
-        fig.savefig(save_path, bbox_inches="tight")
-
-    return fig
+    return _finalize_plot(fig, save_path)
 
 
 def plot_crop_recommendations(
     recommendations: List[Dict[str, Any]],
     save_path: Optional[pathlib.Path] = None,
 ) -> Optional[plt.Figure]:
-    """
-    Renders a horizontal ranking chart of crop suitability scores,
-    harmonized with the application theme tokens.
-    """
+    """Renders a horizontal ranking chart of crop suitability scores."""
     if not recommendations:
         return None
 
     crops = [item["crop_display"] for item in reversed(recommendations)]
     scores = [item["score"] for item in reversed(recommendations)]
 
-    colors = []
-    for score in scores:
-        if score >= 80.0:
-            colors.append("#2d6a4f")
-        elif score >= 60.0:
-            colors.append("#1d3557")
-        elif score >= 40.0:
-            colors.append("#e67e22")
-        else:
-            colors.append("#c0392b")
+    colors = [
+        "#2d6a4f" if s >= 80.0 else ("#1d3557" if s >= 60.0 else ("#e67e22" if s >= 40.0 else "#c0392b"))
+        for s in scores
+    ]
 
-    fig, ax = plt.subplots(figsize=(7.8, max(3.5, len(crops) * 0.44)), dpi=100)
-    fig.patch.set_facecolor("#ffffff")
-    ax.set_facecolor("#fafbfc")
-
+    fig, ax = _setup_barh_plot(
+        height=max(3.5, len(crops) * 0.44),
+        title="Alternative Crop Suitability Ranking (Neural Net Inference)",
+        xlabel="Suitability Score (0 - 100%)",
+    )
+    ax.set_xlim(0, 100)
     bars = ax.barh(crops, scores, color=colors, edgecolor="#1b2d24", alpha=0.9, height=0.55)
 
-    ax.set_xlim(0, 100)
-    ax.set_xlabel("Suitability Score (0 - 100%)", fontsize=9.5, fontweight="bold", color="#1b2d24")
-    ax.set_title("Alternative Crop Suitability Ranking (Neural Net Inference)", fontsize=10.5, fontweight="bold", color="#1b4332", pad=12)
-    ax.tick_params(colors="#1b2d24", labelsize=9)
-
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#ced4da")
-    ax.spines["bottom"].set_color("#ced4da")
-    ax.grid(axis="x", linestyle="--", alpha=0.35, color="#ced4da")
-
     for bar, score in zip(bars, scores):
-        width = bar.get_width()
         ax.text(
-            width + 1.5,
+            bar.get_width() + 1.5,
             bar.get_y() + bar.get_height() / 2,
             f"{score:.1f}%",
             va="center",
@@ -451,23 +348,15 @@ def plot_crop_recommendations(
             color="#1b2d24",
         )
 
-    plt.tight_layout()
-
-    if save_path:
-        fig.savefig(save_path, bbox_inches="tight")
-
-    return fig
+    return _finalize_plot(fig, save_path)
 
 
 def render_disease_detection(leaf_result: Dict[str, Any]) -> None:
-    """
-    Renders pathology diagnosis card, confidence indicator, and management protocols.
-    """
+    """Renders pathology diagnosis card, confidence indicator, and management protocols."""
     if st is None:
         return
 
     st.markdown("### 🔬 Vision Diagnostic Report")
-
     m1, m2 = st.columns(2)
     with m1:
         st.metric("Detected Crop Species", leaf_result["crop_display"])
@@ -493,21 +382,16 @@ def render_disease_detection(leaf_result: Dict[str, Any]) -> None:
 
 
 def render_advisory(advisory: Dict[str, Any]) -> None:
-    """
-    Renders structured agronomic recommendations, disease root causes,
-    and soil target prescriptions.
-    """
+    """Renders structured agronomic recommendations, disease root causes, and soil target prescriptions."""
     if st is None:
         return
 
-    # Section 1: Immediate Action
     recommendations = advisory.get("recommendations", [])
     if recommendations:
         st.markdown("#### 🚨 Immediate Recommended Actions")
         for rec in recommendations:
             st.markdown(f"- **{rec}**")
 
-    # Section 2: Disease Root Causes
     disease_causes = advisory.get("disease_causes", [])
     if disease_causes:
         st.markdown("#### 🔬 Environmental & Soil Disease Drivers")
@@ -518,7 +402,6 @@ def render_advisory(advisory: Dict[str, Any]) -> None:
         for cause in disease_causes:
             st.markdown(f"- ⚠️ **{cause}**")
 
-    # Section 3: Nutrient Management & Prescriptions
     prescriptions = advisory.get("prescriptions", [])
     if prescriptions:
         st.markdown("#### 🧪 Soil Nutrient Management & Corrective Prescriptions")

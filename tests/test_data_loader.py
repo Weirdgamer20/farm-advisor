@@ -3,14 +3,17 @@ Unit tests for src/data_loader.py.
 Tests model loading validation, profile parsing, and missing artifact fallbacks.
 """
 
-import json
 import pathlib
 import tempfile
 import unittest
-import pandas as pd
 
-from config import SOIL_PROFILES, SOIL_CROPS, SOIL_FEATURES
-from src.data_loader import load_crop_data, load_soil_profiles
+from config import SOIL_CROPS, SOIL_FEATURES, SOIL_PROFILES
+from src.data_loader import (
+    check_artifact_availability,
+    get_sample_images,
+    load_crop_data,
+    load_soil_profiles,
+)
 
 
 class TestDataLoader(unittest.TestCase):
@@ -55,10 +58,8 @@ class TestDataLoader(unittest.TestCase):
             if temp_path.exists():
                 temp_path.unlink()
 
-
     def test_check_artifact_availability(self):
         """Verify check_artifact_availability returns structured telemetry dictionary."""
-        from src.data_loader import check_artifact_availability
         telemetry = check_artifact_availability()
         self.assertIsInstance(telemetry, dict)
         self.assertIn("disease_model", telemetry)
@@ -69,7 +70,6 @@ class TestDataLoader(unittest.TestCase):
 
     def test_get_sample_images(self):
         """Verify get_sample_images handles non-existent or empty directory gracefully."""
-        from src.data_loader import get_sample_images
         res = get_sample_images(pathlib.Path("/nonexistent/test_dir"))
         self.assertEqual(res, [])
 

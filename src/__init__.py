@@ -14,6 +14,7 @@ from src.analysis import (
     generate_advisory_summary,
     predict_soil,
     recommend_crops,
+    score_to_status,
 )
 from src.data_loader import (
     check_artifact_availability,
@@ -41,7 +42,6 @@ from src.visualization import (
     plot_crop_recommendations,
     plot_soil_parameters_bar,
     render_advisory,
-    render_device_status,
     render_disclaimer,
     render_disease_detection,
     render_header,
@@ -50,29 +50,30 @@ from src.visualization import (
 )
 
 __all__ = [
-    # data_loader
+    "check_artifact_availability",
+    "get_sample_images",
     "load_crop_data",
     "load_models",
     "load_soil_profiles",
-    # preprocessing
     "prepare_soil_inputs",
     "preprocess_image",
     "validate_soil_readings",
-    # analysis
     "classify_leaf",
     "diagnose_soil",
     "generate_advisory_summary",
     "predict_soil",
     "recommend_crops",
-    # visualization
+    "score_to_status",
     "format_status_badge",
+    "inject_custom_theme",
     "plot_crop_recommendations",
     "plot_soil_parameters_bar",
     "render_advisory",
-    "render_device_status",
+    "render_disclaimer",
     "render_disease_detection",
     "render_header",
-    # utils
+    "render_system_status_sidebar",
+    "render_workflow_diagram",
     "CROP_ALIASES",
     "PRETTY_CROP_NAMES",
     "canonical_crop",
