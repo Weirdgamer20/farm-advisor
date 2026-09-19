@@ -140,32 +140,61 @@ def render_system_status_sidebar(
     device_msg: str,
     models_ready: bool,
     detailed_telemetry: Optional[Dict[str, Any]] = None,
+    runtime_snapshot: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Renders a subtle, non-intrusive system status card in the sidebar."""
+    """
+    Renders an accurate, transparent system status card in the sidebar.
+    Decouples physical GPU hardware from TensorFlow CUDA execution.
+    """
     if st is None:
         return
 
-    device_label = "NVIDIA GPU (CUDA)" if gpu_active else "CPU"
-    device_indicator = "🟢 Active" if gpu_active else "⚪ Standard"
-    models_label = "Operational" if models_ready else "Error"
-    models_indicator = "🟢 Loaded" if models_ready else "🔴 Missing"
+    hw = (runtime_snapshot or {}).get("hardware", {})
+    physical_gpu = hw.get("physical_gpu")
+    tf_cuda = hw.get("tf_cuda_active", gpu_active)
+
+    if tf_cuda:
+        tf_label = "CUDA GPU (Accelerated)"
+        tf_indicator = "🟢 Active"
+    else:
+        tf_label = "CPU Inference"
+        tf_indicator = "⚪ Standard"
+
+    if physical_gpu:
+        hw_label = f"{physical_gpu[:24]}..." if len(physical_gpu) > 24 else physical_gpu
+        hw_sub = "🟢 Detected"
+    else:
+        hw_label = "Host CPU"
+        hw_sub = "⚪ Detected"
+
+    rt_status = (runtime_snapshot or {}).get("status", "READY" if models_ready else "NOT_STARTED")
+    if rt_status == "READY":
+        engine_label, engine_indicator = "Operational", "🟢 Ready"
+    elif rt_status == "INITIALIZING":
+        engine_label, engine_indicator = "Initializing", "⟳ Background"
+    else:
+        engine_label, engine_indicator = "Standby/Notice", "🟡 Pending"
 
     with st.sidebar:
         st.markdown("---")
-        st.markdown("### 🖥️ System Status")
+        st.markdown("### 🖥️ System & Hardware Status")
         st.markdown(
             f"""
             <div class="system-status-box">
                 <div class="status-row">
-                    <span><strong>Inference Device:</strong></span>
-                    <span>{device_label} ({device_indicator})</span>
+                    <span><strong>Physical GPU:</strong></span>
+                    <span>{hw_label} ({hw_sub})</span>
                 </div>
                 <div class="status-row">
-                    <span><strong>Neural Models:</strong></span>
-                    <span>{models_label} ({models_indicator})</span>
+                    <span><strong>TensorFlow Runtime:</strong></span>
+                    <span>{tf_label} ({tf_indicator})</span>
                 </div>
                 <div class="status-row">
-                    <span><strong>Quantile Profiles:</strong></span>
+                    <span><strong>AI Engine:</strong></span>
+                    <span>{engine_label} ({engine_indicator})</span>
+                </div>
+                <div class="status-row">
+                    <span><strong>Empirical Profiles:</strong></span>
                     <span>9 Crop Profiles 🟢</span>
                 </div>
             </div>
@@ -174,11 +203,79 @@ def render_system_status_sidebar(
         )
 
         if detailed_telemetry:
-            with st.expander("🔍 Detailed Model Telemetry", expanded=False):
+            with st.expander("🔍 Disk Artifact Telemetry", expanded=False):
                 for k, v in detailed_telemetry.items():
                     status_icon = "✅" if v.get("exists") else "❌"
                     st.markdown(f"**{v.get('name')}**: {status_icon}")
                     st.caption(f"`{v.get('path')}`")
+
+
+def render_ai_engine_status_card(snapshot: Dict[str, Any]) -> None:
+    """Renders real-time AI background runtime state banner with step breakdown."""
+    if st is None or not snapshot:
+        return
+
+    status = snapshot.get("status", "NOT_STARTED")
+    stages = snapshot.get("stages", {})
+    msg = snapshot.get("progress_message", "")
+
+    if status == "READY":
+        st.markdown(
+            """
+            <div class="advisory-card" style="border-left: 5px solid #2d6a4f; padding: 14px 18px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: #1b4332; font-size: 1.05rem;">AI ENGINE: ● READY</span>
+                    <span style="background: #e8f5ed; color: #2d6a4f; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">Fully Operational</span>
+                </div>
+                <div style="margin-top: 8px; font-size: 0.86rem; color: #495057; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                    <div>Disease Vision Model: <strong style="color: #2d6a4f;">✓ Loaded</strong></div>
+                    <div>Soil Neural Model: <strong style="color: #2d6a4f;">✓ Loaded</strong></div>
+                    <div>Empirical Profiles: <strong style="color: #2d6a4f;">✓ Active (9 Crops)</strong></div>
+                    <div>Inference Graph: <strong style="color: #2d6a4f;">✓ Warmed</strong></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif status == "INITIALIZING":
+        s_tf = "✓" if stages.get("tensorflow") else "⟳"
+        s_dm = "✓" if stages.get("disease_model") else "○"
+        s_sm = "✓" if stages.get("soil_model") else "○"
+        s_wm = "✓" if stages.get("warmup") else "○"
+        st.markdown(
+            f"""
+            <div class="advisory-card" style="border-left: 5px solid #e76f51; padding: 14px 18px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: #e76f51; font-size: 1.05rem;">AI ENGINE: ⟳ INITIALIZING IN BACKGROUND</span>
+                    <span style="background: #fef0ec; color: #e76f51; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">Non-blocking Startup</span>
+                </div>
+                <div style="margin-top: 6px; font-size: 0.88rem; color: #1b2d24;">
+                    <strong>Current Step:</strong> {msg}
+                </div>
+                <div style="margin-top: 8px; font-size: 0.84rem; color: #495057; display: flex; gap: 16px; flex-wrap: wrap;">
+                    <span>TensorFlow: <strong>{s_tf}</strong></span>
+                    <span>Pathology CNN: <strong>{s_dm}</strong></span>
+                    <span>Suitability MLP: <strong>{s_sm}</strong></span>
+                    <span>Graph Warm-up: <strong>{s_wm}</strong></span>
+                </div>
+                <div style="margin-top: 6px; font-size: 0.8rem; color: #6c757d;">
+                    The interface is fully responsive. AI prediction buttons will activate once initialization concludes.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif status == "FAILED":
+        st.markdown(
+            f"""
+            <div class="advisory-card" style="border-left: 5px solid #d62828; padding: 14px 18px; margin-bottom: 16px;">
+                <div style="font-weight: 700; color: #d62828; font-size: 1.05rem;">AI ENGINE: ❌ INITIALIZATION ERROR</div>
+                <div style="margin-top: 6px; font-size: 0.86rem; color: #495057;">{snapshot.get('error', 'Unknown runtime error')}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
 
 
 def render_disclaimer() -> None:

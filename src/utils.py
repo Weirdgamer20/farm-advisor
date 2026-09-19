@@ -213,20 +213,15 @@ def get_disease_treatment(disease: str) -> Dict[str, str]:
     }
 
 
-def setup_device() -> Tuple[bool, str]:
+def inspect_hardware_and_runtime() -> Dict[str, Any]:
     """
-    Configures runtime hardware acceleration safely with CPU fallback.
-    Performs fast, non-blocking GPU detection to eliminate cold-start lag.
+    Accurately discovers host hardware and TensorFlow runtime acceleration.
+    Strictly decouples physical NVIDIA GPU presence (nvidia-smi) from
+    TensorFlow CUDA device registration (tf.config.list_physical_devices('GPU')).
     """
+    physical_gpu_name = None
     try:
-        os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
-        import shutil, subprocess, sys
-
-        if "tensorflow" in sys.modules:
-            gpus = sys.modules["tensorflow"].config.list_physical_devices("GPU")
-            if gpus:
-                return True, f"Hardware acceleration enabled: {len(gpus)} GPU(s) active"
-
+        import shutil, subprocess
         if shutil.which("nvidia-smi"):
             res = subprocess.run(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
@@ -235,9 +230,51 @@ def setup_device() -> Tuple[bool, str]:
                 timeout=2,
             )
             if res.returncode == 0 and res.stdout.strip():
-                return True, f"Hardware acceleration enabled: GPU active ({res.stdout.strip().splitlines()[0]})"
-    except Exception as exc:
-        logger.debug(f"Device setup fallback: {exc}")
+                physical_gpu_name = res.stdout.strip().splitlines()[0].strip()
+    except Exception:
+        pass
 
-    return False, "Running on CPU (No CUDA-compatible GPU detected; standard latency)"
+    tf_gpus = []
+    try:
+        import sys
+        if "tensorflow" in sys.modules:
+            tf_gpus = sys.modules["tensorflow"].config.list_physical_devices("GPU")
+    except Exception:
+        pass
+
+    has_tf_cuda = len(tf_gpus) > 0
+    tf_device_summary = f"{len(tf_gpus)} CUDA GPU(s) active" if has_tf_cuda else "CPU Inference"
+    hardware_label = f"{physical_gpu_name} (detected)" if physical_gpu_name else "Standard Host Processor"
+    cuda_status = (
+        "Active"
+        if has_tf_cuda
+        else ("Unavailable in TensorFlow runtime (CPU fallback)" if physical_gpu_name else "No NVIDIA GPU")
+    )
+
+    return {
+        "physical_gpu": physical_gpu_name,
+        "hardware_label": hardware_label,
+        "tf_cuda_active": has_tf_cuda,
+        "tf_device_summary": tf_device_summary,
+        "cuda_status": cuda_status,
+    }
+
+
+def setup_device() -> Tuple[bool, str]:
+    """
+    Configures runtime hardware acceleration safely with CPU fallback.
+    Returns (tf_cuda_active, truthful_status_message).
+    """
+    try:
+        os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+    except Exception:
+        pass
+
+    hw = inspect_hardware_and_runtime()
+    if hw["tf_cuda_active"]:
+        return True, f"Hardware acceleration enabled: {hw['tf_device_summary']}"
+    if hw["physical_gpu"]:
+        return False, f"CPU Inference ({hw['physical_gpu']} detected, but TensorFlow running on CPU)"
+    return False, "Running on CPU (Standard latency)"
+
 
