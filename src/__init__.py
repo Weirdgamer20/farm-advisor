@@ -16,6 +16,8 @@ from src.analysis import (
     recommend_crops,
 )
 from src.data_loader import (
+    check_artifact_availability,
+    get_sample_images,
     load_crop_data,
     load_models,
     load_soil_profiles,
@@ -35,6 +37,7 @@ from src.utils import (
 )
 from src.visualization import (
     format_status_badge,
+    inject_custom_theme,
     plot_crop_recommendations,
     plot_soil_parameters_bar,
     render_advisory,

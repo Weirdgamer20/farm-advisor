@@ -56,5 +56,23 @@ class TestDataLoader(unittest.TestCase):
                 temp_path.unlink()
 
 
+    def test_check_artifact_availability(self):
+        """Verify check_artifact_availability returns structured telemetry dictionary."""
+        from src.data_loader import check_artifact_availability
+        telemetry = check_artifact_availability()
+        self.assertIsInstance(telemetry, dict)
+        self.assertIn("disease_model", telemetry)
+        self.assertIn("soil_model", telemetry)
+        self.assertIn("disease_classes", telemetry)
+        self.assertIn("soil_profiles", telemetry)
+        self.assertIn("dataset_csv", telemetry)
+
+    def test_get_sample_images(self):
+        """Verify get_sample_images handles non-existent or empty directory gracefully."""
+        from src.data_loader import get_sample_images
+        res = get_sample_images(pathlib.Path("/nonexistent/test_dir"))
+        self.assertEqual(res, [])
+
+
 if __name__ == "__main__":
     unittest.main()
