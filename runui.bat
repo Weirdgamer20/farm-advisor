@@ -43,9 +43,8 @@ if defined WSL_DISTRO (
 
 echo [*] Starting Streamlit inside WSL Linux...
 echo [*] Local web UI: http://localhost:8501
-echo.
-echo [*] Opening browser automatically in 2 seconds...
-start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8501"
+echo [*] Waiting for server to initialize, then opening browser automatically...
+start "" powershell -NoProfile -WindowStyle Hidden -Command "$u = 'http://localhost:8501'; for ($i = 0; $i -lt 90; $i++) { try { $res = (Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 1).StatusCode; if ($res -eq 200) { Start-Process $u; exit } } catch {} Start-Sleep -Milliseconds 800 }"
 
 echo [*] Press Ctrl+C in this terminal to stop the application.
 echo ============================================================
