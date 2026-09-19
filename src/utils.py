@@ -217,41 +217,27 @@ def setup_device() -> Tuple[bool, str]:
     """
     Configures runtime hardware acceleration safely with CPU fallback.
     Performs fast, non-blocking GPU detection to eliminate cold-start lag.
-    Returns (gpu_active, status_message).
     """
     try:
         os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
-        import shutil
-        import subprocess
-        import sys
+        import shutil, subprocess, sys
 
-        # 1. If TensorFlow is already imported, verify physical devices
         if "tensorflow" in sys.modules:
-            tf = sys.modules["tensorflow"]
-            try:
-                gpus = tf.config.list_physical_devices("GPU")
-                if gpus:
-                    gpu_name = getattr(gpus[0], "name", "GPU:0")
-                    return True, f"Hardware acceleration enabled: {len(gpus)} GPU(s) active ({gpu_name})"
-                return False, "Running on CPU (No CUDA-compatible GPU detected; standard latency)"
-            except Exception:
-                pass
+            gpus = sys.modules["tensorflow"].config.list_physical_devices("GPU")
+            if gpus:
+                return True, f"Hardware acceleration enabled: {len(gpus)} GPU(s) active"
 
-        # 2. Fast non-blocking query via nvidia-smi if available
         if shutil.which("nvidia-smi"):
-            try:
-                res = subprocess.run(
-                    ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
-                )
-                if res.returncode == 0 and res.stdout.strip():
-                    gpu_name = res.stdout.strip().split("\n")[0].strip()
-                    return True, f"Hardware acceleration enabled: GPU active ({gpu_name})"
-            except Exception:
-                pass
+            res = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return True, f"Hardware acceleration enabled: GPU active ({res.stdout.strip().splitlines()[0]})"
+    except Exception as exc:
+        logger.debug(f"Device setup fallback: {exc}")
 
-        return False, "Running on CPU (No CUDA-compatible GPU detected; standard latency)"
-    except Exception as e:
-        return False, f"Running on CPU fallback ({e})"
+    return False, "Running on CPU (No CUDA-compatible GPU detected; standard latency)"
+

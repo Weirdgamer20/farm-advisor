@@ -44,17 +44,13 @@ from src.visualization import (
     render_workflow_diagram,
 )
 
-# ============================================================
-# 1. PAGE SETUP & GLOBAL DESIGN SYSTEM
-# ============================================================
-
+# 1. Page Configuration & System Setup
 st.set_page_config(
     page_title="Farmer Crop Advisory System",
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 inject_custom_theme()
 
 gpu_active, device_msg = setup_device()
@@ -79,20 +75,9 @@ if not models_ready and model_init_error:
         st.code(model_init_error)
         st.markdown("Ensure model artifacts are placed in the `models/` directory.")
 
-# ============================================================
-# 2. SESSION STATE MANAGEMENT (No Unnecessary Startup Inference)
-# ============================================================
-
+# 2. State Management
 session_defaults = {
-    "soil_readings": {
-        "N": 90.0,
-        "P": 42.0,
-        "K": 43.0,
-        "temperature": 25.6,
-        "humidity": 80.0,
-        "ph": 6.5,
-        "rainfall": 200.0,
-    },
+    "soil_readings": {"N": 90.0, "P": 42.0, "K": 43.0, "temperature": 25.6, "humidity": 80.0, "ph": 6.5, "rainfall": 200.0},
     "target_crop": "tomato",
     "leaf_result": None,
     "leaf_image": None,
@@ -111,28 +96,17 @@ def compute_soil_hash(crop: str, readings: Dict[str, float]) -> str:
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
-# ============================================================
-# 3. SIDEBAR NAVIGATION
-# ============================================================
-
+# 3. Sidebar Navigation
 with st.sidebar:
     st.markdown("## 🧭 Navigation")
     current_page = st.radio(
         "Select Advisory Module:",
-        [
-            "🏠 Dashboard",
-            "🧪 Soil & Crop Advisory",
-            "🍃 Leaf Disease Detection",
-            "📋 Integrated Farm Advisory",
-        ],
+        ["🏠 Dashboard", "🧪 Soil & Crop Advisory", "🍃 Leaf Disease Detection", "📋 Integrated Farm Advisory"],
         index=0,
     )
     st.markdown("---")
 
-# ============================================================
-# 4. MODULE 1: DASHBOARD
-# ============================================================
-
+# 4. Module 1: Dashboard
 if current_page == "🏠 Dashboard":
     st.markdown("## 📊 Overview & Capabilities")
     st.markdown(
@@ -142,41 +116,21 @@ if current_page == "🏠 Dashboard":
     )
 
     overview_cards = [
-        (
-            "🧪 Soil & Crop Advisory",
-            "Evaluates 7 soil nutrients and climate parameters against 9 crop profiles using dual-input neural modeling and empirical quantiles.",
-            "Numerical Deep Learning →",
-            "#2d6a4f",
-        ),
-        (
-            "🍃 Leaf Disease Detection",
-            "EfficientNetB0 vision model trained on 38 PlantVillage pathology classes with calibrated diagnostic confidence and treatment protocols.",
-            "Computer Vision Inference →",
-            "#40916c",
-        ),
-        (
-            "📋 Integrated Farm Advisory",
-            "Synthesizes foliar disease diagnosis with field soil readings to detect environmental infection drivers and formulate precise corrective amendments.",
-            "Agronomic Prescriptions →",
-            "#52b788",
-        ),
+        ("🧪 Soil & Crop Advisory", "Evaluates 7 soil nutrients and climate parameters against 9 crop profiles using dual-input neural modeling and empirical quantiles.", "Numerical Deep Learning →", "#2d6a4f"),
+        ("🍃 Leaf Disease Detection", "EfficientNetB0 vision model trained on 38 PlantVillage pathology classes with calibrated diagnostic confidence and treatment protocols.", "Computer Vision Inference →", "#40916c"),
+        ("📋 Integrated Farm Advisory", "Synthesizes foliar disease diagnosis with field soil readings to detect environmental infection drivers and formulate precise corrective amendments.", "Agronomic Prescriptions →", "#52b788"),
     ]
-
     for col, (title, desc, tag, border_color) in zip(st.columns(3), overview_cards):
         with col:
             st.markdown(
-                f"""
-                <div class="advisory-card" style="border-top: 4px solid {border_color};">
-                    <h3>{title}</h3>
-                    <p>{desc}</p>
+                f"""<div class="advisory-card" style="border-top: 4px solid {border_color};">
+                    <h3>{title}</h3><p>{desc}</p>
                     <span style="color: {border_color}; font-weight: 600; font-size: 0.88rem;">{tag}</span>
-                </div>
-                """,
+                </div>""",
                 unsafe_allow_html=True,
             )
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     col_sys, col_info = st.columns([1, 1], gap="large")
     with col_sys:
         st.markdown("### 🖥️ Operational System Status")
@@ -189,7 +143,6 @@ if current_page == "🏠 Dashboard":
             - **Dataset Repository:** 🟢 Available (`data/raw/crop_recommendation_10000.csv`)
             """
         )
-
     with col_info:
         st.markdown("### 🔬 Verified Architecture & Logic")
         st.markdown(
@@ -204,70 +157,27 @@ if current_page == "🏠 Dashboard":
     render_workflow_diagram()
     render_disclaimer()
 
-# ============================================================
-# 5. MODULE 2: SOIL & CROP ADVISORY
-# ============================================================
-
+# 5. Module 2: Soil & Crop Advisory
 elif current_page == "🧪 Soil & Crop Advisory":
     st.markdown("## 🧪 Soil & Crop Advisory")
     st.caption("Numerical ML Workflow: Evaluates soil fertility and climate measurements against empirical crop profiles.")
 
     with st.expander("📝 Soil & Meteorological Inputs", expanded=True):
-        sc1, sc2, sc3 = st.columns(3)
-        with sc1:
-            nitrogen = st.number_input(
-                "Nitrogen (N) [mg/kg]:",
-                min_value=0.0,
-                max_value=300.0,
-                value=float(st.session_state["soil_readings"]["N"]),
-                step=1.0,
-            )
-            phosphorus = st.number_input(
-                "Phosphorus (P) [mg/kg]:",
-                min_value=0.0,
-                max_value=300.0,
-                value=float(st.session_state["soil_readings"]["P"]),
-                step=1.0,
-            )
-            potassium = st.number_input(
-                "Potassium (K) [mg/kg]:",
-                min_value=0.0,
-                max_value=300.0,
-                value=float(st.session_state["soil_readings"]["K"]),
-                step=1.0,
-            )
-
-        with sc2:
-            temperature = st.number_input(
-                "Air Temperature [°C]:",
-                min_value=-10.0,
-                max_value=50.0,
-                value=float(st.session_state["soil_readings"]["temperature"]),
-                step=0.5,
-            )
-            humidity = st.number_input(
-                "Relative Humidity [%]:",
-                min_value=10.0,
-                max_value=100.0,
-                value=float(st.session_state["soil_readings"]["humidity"]),
-                step=1.0,
-            )
-            ph = st.number_input(
-                "Soil pH (0 - 14):",
-                min_value=3.5,
-                max_value=10.0,
-                value=float(st.session_state["soil_readings"]["ph"]),
-                step=0.1,
-            )
-
-        with sc3:
-            rainfall = st.number_input(
-                "Annual Rainfall [mm]:",
-                min_value=0.0,
-                max_value=2500.0,
-                value=float(st.session_state["soil_readings"]["rainfall"]),
-                step=5.0,
-            )
+        cols = st.columns(3)
+        specs = [
+            ("N", "Nitrogen (N) [mg/kg]:", 0.0, 300.0, 1.0, 0),
+            ("P", "Phosphorus (P) [mg/kg]:", 0.0, 300.0, 1.0, 0),
+            ("K", "Potassium (K) [mg/kg]:", 0.0, 300.0, 1.0, 0),
+            ("temperature", "Air Temperature [°C]:", -10.0, 50.0, 0.5, 1),
+            ("humidity", "Relative Humidity [%]:", 10.0, 100.0, 1.0, 1),
+            ("ph", "Soil pH (0 - 14):", 3.5, 10.0, 0.1, 1),
+            ("rainfall", "Annual Rainfall [mm]:", 0.0, 2500.0, 5.0, 2),
+        ]
+        current_readings = {
+            f: float(cols[c].number_input(lbl, min_value=lo, max_value=hi, value=float(st.session_state["soil_readings"][f]), step=s))
+            for f, lbl, lo, hi, s, c in specs
+        }
+        with cols[2]:
             target_crop_sel = st.selectbox(
                 "Primary Target Crop:",
                 options=config.SOIL_CROPS,
@@ -277,15 +187,6 @@ elif current_page == "🧪 Soil & Crop Advisory":
             st.markdown("<br>", unsafe_allow_html=True)
             analyze_btn = st.button("⚡ Run Soil & Crop Analysis", use_container_width=True, type="primary")
 
-    current_readings = {
-        "N": float(nitrogen),
-        "P": float(phosphorus),
-        "K": float(potassium),
-        "temperature": float(temperature),
-        "humidity": float(humidity),
-        "ph": float(ph),
-        "rainfall": float(rainfall),
-    }
     st.session_state["soil_readings"] = current_readings
     st.session_state["target_crop"] = target_crop_sel
     current_hash = compute_soil_hash(target_crop_sel, current_readings)
@@ -306,19 +207,15 @@ elif current_page == "🧪 Soil & Crop Advisory":
         if soil_res and ranked_crops:
             st.markdown("---")
             st.markdown("### 🏆 Alternative Crop Suitability Rankings")
-
             for idx, (col, item) in enumerate(zip(st.columns(3), ranked_crops[:3])):
                 with col:
-                    badge = format_status_badge(item["status"])
                     st.markdown(
-                        f"""
-                        <div class="ranking-card">
+                        f"""<div class="ranking-card">
                             <span class="rank-tag">RANK #{idx + 1}</span>
                             <div class="crop-title">{item['crop_display']}</div>
                             <div class="score-value">{item['score']:.1f}%</div>
-                            <div>{badge}</div>
-                        </div>
-                        """,
+                            <div>{format_status_badge(item["status"])}</div>
+                        </div>""",
                         unsafe_allow_html=True,
                     )
 
@@ -348,24 +245,15 @@ elif current_page == "🧪 Soil & Crop Advisory":
 
     render_disclaimer()
 
-# ============================================================
-# 6. MODULE 3: LEAF DISEASE DETECTION
-# ============================================================
-
+# 6. Module 3: Leaf Disease Detection
 elif current_page == "🍃 Leaf Disease Detection":
     st.markdown("## 🍃 Leaf Disease Detection")
     st.caption("Computer Vision Workflow: Evaluates foliar imagery using EfficientNetB0 to diagnose pathology and recommend protocols.")
 
     col_input, col_pred = st.columns([1, 1], gap="large")
-
     with col_input:
         st.markdown("### 📷 Select or Upload Foliar Image")
-        source_mode = st.radio(
-            "Image Input Source:",
-            ["Dataset Sample Library", "Upload Image File"],
-            horizontal=True,
-        )
-
+        source_mode = st.radio("Image Input Source:", ["Dataset Sample Library", "Upload Image File"], horizontal=True)
         chosen_image: Optional[Image.Image] = None
 
         if source_mode == "Dataset Sample Library":
@@ -378,10 +266,7 @@ elif current_page == "🍃 Leaf Disease Detection":
             else:
                 st.info("Dataset samples directory `data/raw/Plant Village Dataset/Test` not found.")
         else:
-            uploaded_file = st.file_uploader(
-                "Upload a leaf image (JPEG, PNG):",
-                type=["jpg", "jpeg", "png"],
-            )
+            uploaded_file = st.file_uploader("Upload a leaf image (JPEG, PNG):", type=["jpg", "jpeg", "png"])
             if uploaded_file is not None:
                 chosen_image = Image.open(uploaded_file)
 
@@ -407,10 +292,7 @@ elif current_page == "🍃 Leaf Disease Detection":
 
     render_disclaimer()
 
-# ============================================================
-# 7. MODULE 4: INTEGRATED FARM ADVISORY
-# ============================================================
-
+# 7. Module 4: Integrated Farm Advisory
 elif current_page == "📋 Integrated Farm Advisory":
     st.markdown("## 📋 Integrated Farm Advisory Report")
     st.caption("Holistic Decision Support: Correlates vision pathology detection with soil suitability modeling into actionable field prescriptions.")
@@ -450,13 +332,11 @@ elif current_page == "📋 Integrated Farm Advisory":
         for col, (label, content, footer, border_color) in zip(st.columns(3), summary_cards):
             with col:
                 st.markdown(
-                    f"""
-                    <div class="advisory-card" style="border-left: 5px solid {border_color};">
+                    f"""<div class="advisory-card" style="border-left: 5px solid {border_color};">
                         <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">{label}</div>
                         <div style="font-size: 1.3rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{content}</div>
                         <span style="font-size: 0.85rem; color: #495057;">{footer}</span>
-                    </div>
-                    """,
+                    </div>""",
                     unsafe_allow_html=True,
                 )
 
@@ -473,8 +353,6 @@ elif current_page == "📋 Integrated Farm Advisory":
                 f"Consider rotational planting to naturally break pathogen cycles and maximize nutrient efficiency."
             )
         else:
-            st.success(
-                f"Your selected crop **{pretty_crop(target_crop)}** is currently the top-performing match ({soil_res['score']:.1f}%) for this soil environment."
-            )
+            st.success(f"Your selected crop **{pretty_crop(target_crop)}** is currently the top-performing match ({soil_res['score']:.1f}%) for this soil environment.")
 
     render_disclaimer()
