@@ -1,969 +1,180 @@
 # Farmer Crop Advisory System
 
-A presentation-ready AI agriculture prototype that provides:
+An end-to-end academic AI agriculture prototype providing:
 
-- Plant leaf disease classification
-- Crop recommendation from soil/environment data
-- Soil/fertilizer advisory
-- Irrigation guidance
-- Streamlit web interface
-
-The project is designed to run on **Windows through WSL Ubuntu**.
-
-
-## Download dataset here ##
-  url-- https://www.kaggle.com/datasets/emmarex/plantdisease
+- **Plant Leaf Disease Classification**: EfficientNet-based computer vision for foliar pathology diagnosis with top candidate rankings and confidence calibration.
+- **Crop Suitability Neural Network**: Dual-input deep learning model conditioning numeric soil/meteorological readings with crop embeddings.
+- **Empirical Quantile Diagnostics**: Statistical benchmarking against precalculated empirical quantiles (`p10`, `p25`, `median`, `p75`, `p90`) across 9 supported crop profiles.
+- **Agronomic Advisory Synthesis**: Correlates environmental and soil drivers with plant disease vulnerability and computes actionable concentration adjustment prescriptions.
+- **Streamlit Web Application**: Thin, responsive presentation layer with publication-ready Matplotlib visual analytics.
 
 ---
 
 ## 1. Project Structure
 
-The project adheres to a modular submission architecture based on the Single Responsibility Principle (SRP):
+The codebase is strictly organized according to the academic ML evaluator architecture following the Single Responsibility Principle (SRP):
 
 ```text
-D:\PROJECT\
-│
-├── main.py                          # Streamlit UI & application entry point
+farm-advisor/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                   # Automated CI workflow (compileall & pytest)
 ├── config.py                        # Centralized paths, model artifacts, and hyperparameters
-├── requirements.txt                 # Project dependencies
+├── main.py                          # Thin Streamlit application entry point
+├── requirements.txt                 # Dependencies including pytest
 ├── README.md                        # Documentation & setup guide
-├── .gitignore                       # Clean submission exclusion file
-├── run_web_ui.bat                   # Web interface launcher (WSL / fallback)
-├── run_webui.bat                    # Backward compatibility launcher
-├── run_training.bat                 # Dual-model training launcher
+├── runui.bat                        # Automated WSL launcher script
 │
 ├── data/
-│   ├── raw/
+│   ├── raw/                         # Raw datasets
 │   │   ├── crop_recommendation_10000.csv
 │   │   └── Plant Village Dataset/
 │   │       ├── Train/
 │   │       ├── Val/
 │   │       └── Test/
-│   └── processed/
+│   └── processed/                   # Processed dataset storage
 │
 ├── src/
-│   ├── __init__.py
-│   ├── data_loader.py               # Cached model & dataset loading
-│   ├── preprocessing.py             # Image transforms & feature vectorization
-│   ├── analysis.py                  # Core inference, quantile diagnostics, advisory logic
+│   ├── __init__.py                  # Package interface exports
+│   ├── data_loader.py               # Cached model loading, validation & profile parsing
+│   ├── preprocessing.py             # EXIF image correction, RGB tensor scaling & soil vectorization
+│   ├── analysis.py                  # Core inference, quantile diagnostics & advisory synthesis
 │   ├── visualization.py             # Charts, metrics & status badges
-│   ├── utils.py                     # Canonical crop mappings & hardware setup
-│   ├── train_image_model.py         # Leaf disease training script
-│   └── train_soil_model.py          # Soil suitability training script
+│   └── utils.py                     # Canonical crop mappings, disease treatments & device detection
 │
 ├── models/
-│   ├── plant_disease_model.keras
-│   ├── plant_disease_classes.json
-│   ├── soil_condition_model.keras
-│   ├── plant_disease_model_backup.keras
-│   ├── plant_disease_model_cpu_best.keras
-│   ├── soil_condition_metadata.json
-│   └── soil_condition_profiles.json
+│   ├── plant_disease_model.keras    # Trained foliar pathology model
+│   ├── plant_disease_classes.json   # 38 pathology class labels
+│   ├── soil_condition_model.keras   # Trained dual-input suitability model
+│   ├── soil_condition_profiles.json # Empirical quantile distributions
+│   └── soil_condition_metadata.json # Training metadata
 │
 ├── outputs/
 │   ├── figures/                     # Generated diagnostic plots
 │   ├── reports/                     # Model performance reports
 │   └── predictions/                 # Inference logs
 │
-└── docs/                            # 18 Standardized documentation modules
-    ├── 01_PROBLEM_STATEMENT.md
-    ├── 02_SRS.md
-    ├── 03_SYSTEM_ARCHITECTURE.md
-    ├── 04_ER_DIAGRAM.md
-    ├── 05_DATASET.md
-    ├── 06_DATA_PREPROCESSING.md
-    ├── 07_ML_MODEL.md
-    ├── 08_MODEL_EVALUATION.md
-    ├── 09_CHATBOT.md
-    ├── 10_BACKEND_API.md
-    ├── 11_DATABASE.md
-    ├── 12_FRONTEND.md
-    ├── 13_ADMIN_DASHBOARD.md
-    ├── 14_TEST_CASES.md
-    ├── 15_API_DOCUMENTATION.md
-    ├── 16_DEPLOYMENT.md
-    ├── 17_FINAL_REPORT.md
-    └── 18_PROJECT_PRESENTATION.md
-```
-
-The `models/` directory contains pre-trained neural networks. If these weights already exist, **re-training is optional**.
-
----
-
-# 2. Requirements
-
-## Windows
-
-Install:
-
-- Windows 10/11
-- NVIDIA driver if GPU acceleration is required
-- WSL2
-- Ubuntu WSL distribution
-- Python 3.13 or the Python version supported by the installed project environment
-
-## Python packages
-
-The project uses packages listed in:
-
-```text
-requirements.txt
-```
-
-Main dependencies include:
-
-```text
-TensorFlow
-NumPy
-Pandas
-Scikit-learn
-Matplotlib
-Seaborn
-Pillow
-Streamlit
+├── tests/
+│   ├── __init__.py
+│   ├── test_analysis.py             # Diagnostics, advisory & root cause synthesis tests
+│   ├── test_data_loader.py          # Profile loading, missing artifact fallback tests
+│   ├── test_preprocessing.py        # Image transforms, soil vectorization & bounds tests
+│   └── test_utils.py                # Crop canonicalization, treatments & device check tests
+│
+└── docs/                            # Standardized project documentation modules
 ```
 
 ---
 
-# 3. Start WSL Ubuntu
+## 2. Component Responsibilities
 
-Do NOT use the `docker-desktop` WSL distribution.
-
-Open PowerShell:
-
-```powershell
-wsl -l -v
-```
-
-You should have an Ubuntu distribution similar to:
-
-```text
-NAME              STATE           VERSION
-docker-desktop    Running         2
-Ubuntu            Stopped         2
-```
-
-Start Ubuntu:
-
-```powershell
-wsl -d Ubuntu
-```
-
-You should see something similar to:
-
-```text
-(gpu) user@computer:/mnt/d/farmadvisdor$
-```
+| Module | Responsibility |
+| :--- | :--- |
+| **`config.py`** | Centralizes paths, model artifact references, image sizes, soil features, and agronomic thresholds. |
+| **`src/data_loader.py`** | Handles cached loading and validation of Keras neural models, class labels, CSV datasets, and quantile profiles. |
+| **`src/preprocessing.py`** | Implements EXIF rotation correction, standard RGB normalization, dual-input soil vectorization, and physical range validation. |
+| **`src/analysis.py`** | Coordinates vision inference, single-crop suitability scoring, vectorized multi-crop batch ranking, quantile comparisons, and root-cause advisory synthesis. |
+| **`src/visualization.py`** | Renders UI cards, banners, metric widgets, and headless Matplotlib charts for parameter deviations and crop rankings. |
+| **`src/utils.py`** | Provides canonical crop name resolution, human-readable formatting, disease treatment lookups, and non-blocking GPU/CPU hardware configuration. |
+| **`main.py`** | Thin Streamlit coordinator wiring data loading, user inputs, analysis, and visual presentations. |
 
 ---
 
-# 4. Go to the Project
+## 3. Environment Setup
 
-Inside Ubuntu:
+### System Prerequisites
+- **Operating System**: Windows 10/11 with WSL2 (Ubuntu) or native Linux
+- **Python**: 3.10 - 3.13
+- **Acceleration**: NVIDIA GPU with CUDA support (CPU fallback automatically engaged when GPU is absent)
 
-```bash
-cd /mnt/d/farmadvisdor
-```
+### Installation
 
-Verify:
+1. Navigate to the project root directory:
+   ```bash
+   cd /mnt/d/PROJECT
+   ```
 
-```bash
-pwd
-ls
-```
+2. Activate or create a virtual environment:
+   ```bash
+   source .venv/bin/activate
+   ```
 
-You should see:
-
-```text
-farm_advisor.py
-train_image_model.py
-train_soil_model.py
-requirements.txt
-crop_recommendation_10000.csv
-Plant Village Dataset
-models
-```
+3. Install project dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ---
 
-# 5. Verify Python
+## 4. Running the Application
 
-Run:
-
+### Direct Terminal Command
 ```bash
-python3 --version
+python3 -m streamlit run main.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Example:
-
-```text
-Python 3.13.15
-```
-
-Check the active environment:
-
-```bash
-echo $VIRTUAL_ENV
-```
-
-If an environment is already active, continue.
-
-If you have a project virtual environment at:
-
-```text
-/mnt/d/farmadvisdor/.venv
-```
-
-activate it with:
-
-```bash
-source /mnt/d/farmadvisdor/.venv/bin/activate
-```
-
-If your existing environment has a different location, activate that environment instead.
-
-Verify:
-
-```bash
-which python3
-```
-
----
-
-# 6. Install Dependencies
-
-With the project environment active:
-
-```bash
-python3 -m pip install --upgrade pip
-```
-
-Then:
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-Verify TensorFlow:
-
-```bash
-python3 -c "import tensorflow as tf; print('TensorFlow:', tf.__version__)"
-```
-
-Verify Streamlit:
-
-```bash
-python3 -c "import streamlit; print('Streamlit:', streamlit.__version__)"
-```
-
----
-
-# 7. Verify GPU
-
-Run:
-
-```bash
-python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-```
-
-If a GPU is available, TensorFlow should return something similar to:
-
-```text
-[PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
-```
-
-If it returns:
-
-```text
-[]
-```
-
-TensorFlow is running without a GPU.
-
-The project can still run on CPU, but image-model training will be slower.
-
----
-
-# 8. Check the Crop Dataset
-
-The crop recommendation dataset is:
-
-```text
-crop_recommendation_10000.csv
-```
-
-Check that it exists:
-
-```bash
-ls -lh crop_recommendation_10000.csv
-```
-
-The dataset contains:
-
-```text
-N
-P
-K
-temperature
-humidity
-ph
-rainfall
-crop
-```
-
-The soil/crop model uses these values to calculate crop/soil recommendations.
-
----
-
-# 9. Check the Plant Disease Dataset
-
-The Plant Village dataset must have:
-
-```text
-Plant Village Dataset/
-├── Train/
-├── Val/
-└── Test/
-```
-
-Check:
-
-```bash
-ls "Plant Village Dataset"
-```
-
-Expected:
-
-```text
-Train
-Val
-Test
-```
-
-Check the training classes:
-
-```bash
-find "Plant Village Dataset/Train" -mindepth 1 -maxdepth 1 -type d
-```
-
-The class directories contain the leaf images.
-
----
-
-# 10. Train the Disease Model
-
-The disease model is trained using:
-
-```text
-train_image_model.py
-```
-
-Run:
-
-```bash
-python3 train_image_model.py
-```
-
-This is the most computationally expensive stage.
-
-The process uses the Plant Village:
-
-```text
-Train → training
-Val   → validation
-Test  → final evaluation
-```
-
-After successful training, check:
-
-```bash
-ls -lh models/
-```
-
-The important files include:
-
-```text
-models/plant_disease_model.keras
-models/plant_disease_classes.json
-```
-
-Depending on the training script, additional backup/best-model files may also be created.
-
----
-
-# 11. Train the Soil/Crop Model
-
-Run:
-
-```bash
-python3 train_soil_model.py
-```
-
-This uses:
-
-```text
-crop_recommendation_10000.csv
-```
-
-After successful training, verify:
-
-```bash
-ls -lh models/
-```
-
-The important output is:
-
-```text
-models/soil_condition_model.keras
-```
-
-Metadata/profile files may also be generated.
-
----
-
-# 12. Train Both Models
-
-If you want to run both training programs manually:
-
-```bash
-python3 train_image_model.py
-python3 train_soil_model.py
-```
-
-Wait for both commands to finish successfully.
-
-Then:
-
-```bash
-ls -lh models/
-```
-
----
-
-# 13. Important: Do Not Retrain Every Time
-
-Once these files exist:
-
-```text
-models/plant_disease_model.keras
-models/plant_disease_classes.json
-models/soil_condition_model.keras
-```
-
-you normally **do not need to run the training scripts again**.
-
-Training is only required when:
-
-- The dataset changes
-- The model code changes
-- You want better accuracy
-- You intentionally want to create a new model
-
-For normal presentation use, load the existing models.
-
----
-
-# 14. Run the Web UI
-
-The main application is:
-
-```text
-farm_advisor.py
-```
-
-Run:
-
-```bash
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-Streamlit should display a URL such as:
-
-```text
-Local URL: http://localhost:8501
-```
-
-Open Windows Chrome and visit:
-
+Once started, navigate to:
 ```text
 http://localhost:8501
 ```
 
----
-
-# 15. Using the Web UI
-
-## Disease Detection
-
-1. Open the web UI.
-2. Find the leaf disease section.
-3. Upload a leaf image.
-4. The application loads the trained disease model.
-5. The model predicts the disease class.
-6. The application displays the prediction and confidence.
-
-Pipeline:
-
-```text
-Leaf Image
-    ↓
-Image Preprocessing
-    ↓
-Trained Disease Model
-    ↓
-Disease Class
-    ↓
-Confidence
-```
+### Windows One-Click Launcher
+Double-click `runui.bat` from Windows File Explorer. It automatically detects WSL Ubuntu, starts Streamlit headlessly, and opens your default browser.
 
 ---
 
-# 16. Crop/Soil Advisory
+## 5. Automated Verification & Testing
 
-Enter:
-
-```text
-Nitrogen
-Phosphorus
-Potassium
-Temperature
-Humidity
-pH
-Rainfall
+### Running Syntax Validation (compileall)
+```bash
+python3 -m compileall config.py main.py src/ tests/
 ```
 
-The application uses the trained soil/crop model.
-
-Pipeline:
-
-```text
-N / P / K
-Temperature
-Humidity
-pH
-Rainfall
-    ↓
-Soil/Crop Model
-    ↓
-Crop / Soil Recommendation
+### Running Pytest Test Suite
+Execute the full unit and integration test suite:
+```bash
+pytest tests/ -v
 ```
+
+The test suite validates:
+- Image tensor conversion (PIL RGB, RGBA, bytes, EXIF orientation).
+- Soil input vectorization and physical range bounds checking.
+- Empirical quantile calculation and deviation status mapping (`LOW`, `NORMAL`, `HIGH`).
+- Root cause correlation for plant diseases with environmental drivers (humidity, rainfall, K, N, pH).
+- Canonical crop normalization and alias resolution across naming variants.
+- Non-blocking hardware acceleration detection and CPU fallback.
+- Profile parsing and fallback handling on missing artifact paths.
 
 ---
 
-# 17. One-Click Web UI
+## 6. Continuous Integration (GitHub Actions)
 
-The project includes:
-
-```text
-run_web_ui.bat
-```
-
-From Windows, double-click:
-
-```text
-run_web_ui.bat
-```
-
-It launches the application through WSL Ubuntu and uses the existing trained models.
-
-Alternatively, run it from PowerShell:
-
-```powershell
-D:\farmadvisdor\run_web_ui.bat
-```
-
-The browser can then be opened at:
-
-```text
-http://localhost:8501
-```
+Continuous integration is configured in `.github/workflows/ci.yml`. On every push and pull request to `master` and `main`, CI performs:
+1. Python 3.11 environment setup.
+2. Automated dependency installation from `requirements.txt`.
+3. Complete syntax compilation via `python -m compileall`.
+4. Automated test suite execution via `pytest tests/ -v`.
 
 ---
 
-# 18. Manual One-Click Equivalent
-
-If the BAT file is unavailable, use:
-
-```powershell
-wsl -d Ubuntu
-```
-
-Then:
-
-```bash
-cd /mnt/d/farmadvisdor
-```
-
-Activate the project environment if necessary:
-
-```bash
-source /path/to/your/gpu/environment/bin/activate
-```
-
-Then:
-
-```bash
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
----
-
-# 19. Complete First-Time Setup
-
-For a completely fresh setup:
-
-### PowerShell
-
-```powershell
-wsl -l -v
-```
-
-Start Ubuntu:
-
-```powershell
-wsl -d Ubuntu
-```
-
-### Ubuntu
-
-```bash
-cd /mnt/d/farmadvisdor
-```
-
-Check Python:
-
-```bash
-python3 --version
-```
-
-Activate the project environment:
-
-```bash
-source /path/to/your/gpu/environment/bin/activate
-```
-
-Install dependencies:
-
-```bash
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
-```
-
-Check TensorFlow:
-
-```bash
-python3 -c "import tensorflow as tf; print(tf.__version__)"
-```
-
-Check GPU:
-
-```bash
-python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-```
-
-Train disease model:
-
-```bash
-python3 train_image_model.py
-```
-
-Train soil/crop model:
-
-```bash
-python3 train_soil_model.py
-```
-
-Launch UI:
-
-```bash
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-Open:
-
-```text
-http://localhost:8501
-```
-
----
-
-# 20. Normal Presentation-Day Startup
-
-If the models are already trained, you do NOT need the training commands.
-
-Use only:
-
-```powershell
-wsl -d Ubuntu
-```
-
-Then:
-
-```bash
-cd /mnt/d/farmadvisdor
-```
-
-Activate the existing environment:
-
-```bash
-source /path/to/your/gpu/environment/bin/activate
-```
-
-Run:
-
-```bash
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-Or simply double-click:
-
-```text
-run_web_ui.bat
-```
-
----
-
-# 21. Troubleshooting
-
-## `python3: not found`
-
-You are probably inside the wrong WSL distribution.
-
-Check:
-
-```powershell
-wsl -l -v
-```
-
-Do not use:
-
-```text
-docker-desktop
-```
-
-Use:
-
-```powershell
-wsl -d Ubuntu
-```
-
----
-
-## `apt: not found`
-
-You are probably inside `docker-desktop`.
-
-Exit:
-
-```bash
-exit
-```
-
-Then from PowerShell:
-
-```powershell
-wsl -d Ubuntu
-```
-
----
-
-## `Activate.ps1` not found
-
-A Linux virtual environment uses:
-
-```bash
-source .venv/bin/activate
-```
-
-A Windows virtual environment uses:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Do not use the Windows activation command inside WSL.
-
----
-
-## `streamlit: command not found`
-
-Use:
-
-```bash
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-If Streamlit is not installed:
-
-```bash
-python3 -m pip install streamlit
-```
-
----
-
-## TensorFlow cannot find GPU
-
-Check:
-
-```bash
-python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-```
-
-If it returns:
-
-```text
-[]
-```
-
-the application can still run, but training may be slower.
-
----
-
-## Model file not found
-
-Check:
-
-```bash
-ls -lh models/
-```
-
-The application requires the trained model files generated by the training scripts.
-
-If they are missing, retrain:
-
-```bash
-python3 train_image_model.py
-python3 train_soil_model.py
-```
-
----
-
-## Streamlit `ScriptRunContext` warnings
-
-Do not run:
-
-```bash
-python3 farm_advisor.py
-```
-
-Run:
-
-```bash
-python3 -m streamlit run farm_advisor.py
-```
-
----
-
-# 22. System Workflow
-
-```text
-                    FARMER CROP ADVISORY
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-         LEAF IMAGE                    FIELD DATA
-              │                             │
-              ▼                             ▼
-      Disease Model                  Soil/Crop Model
-              │                             │
-              ▼                             ▼
-       Disease Result               Crop/Soil Result
-              │                             │
-              └──────────────┬──────────────┘
-                             ▼
-                      FARM ADVISORY
-```
-
----
-
-# 23. Model Files
-
-The application uses trained `.keras` models rather than retraining models during normal inference.
-
-Disease:
-
-```text
-models/plant_disease_model.keras
-```
-
-Disease labels:
-
-```text
-models/plant_disease_classes.json
-```
-
-Soil/crop:
-
-```text
-models/soil_condition_model.keras
-```
-
-Therefore, the normal workflow is:
-
-```text
-Train Once
-   ↓
-Save Models
-   ↓
-Run Web UI
-   ↓
-Load Models
-   ↓
-Farmer Input
-   ↓
-Prediction
-```
-
----
-
-# 24. Presentation Demo
-
-Recommended demonstration:
-
-1. Start `run_web_ui.bat`.
-2. Open `http://localhost:8501`.
-3. Upload a Plant Village leaf image.
-4. Show the detected disease and confidence.
-5. Enter N/P/K, temperature, humidity, pH and rainfall.
-6. Generate the crop/soil advisory.
-7. Explain that the disease model was trained using Plant Village and the crop recommendation model uses the supplied agricultural CSV.
-8. Show the trained model files in `models/`.
-
-This demonstrates the complete working prototype without requiring the training process during the presentation.
-
----
-
-## Quick Commands
-
-### First-time training
-
-```bash
-wsl -d Ubuntu
-cd /mnt/d/farmadvisdor
-source /path/to/your/gpu/environment/bin/activate
-python3 -m pip install -r requirements.txt
-python3 train_image_model.py
-python3 train_soil_model.py
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-### Normal use
-
-```bash
-wsl -d Ubuntu
-cd /mnt/d/farmadvisdor
-source /path/to/your/gpu/environment/bin/activate
-python3 -m streamlit run farm_advisor.py --server.address 0.0.0.0
-```
-
-Or from Windows:
-
-```text
-Double-click run_web_ui.bat
-```
-
----
-
-## Important
-
-This is a **demonstration/prototype system**, not a production agricultural diagnostic system. Disease predictions are model predictions and should not be treated as definitive diagnoses or as a substitute for professional agricultural advice.
+## 7. Supported Crops & Soil Parameters
+
+### Supported Crops (9 Species)
+- Apple (`apple`)
+- Bell Pepper (`bell_pepper`)
+- Cherry (`cherry`)
+- Grape (`grapes`)
+- Corn / Maize (`maize`)
+- Peach (`peach`)
+- Potato (`potato`)
+- Strawberry (`strawberry`)
+- Tomato (`tomato`)
+
+### Monitored Soil & Climate Parameters (7 Features)
+- **Nitrogen (N)**: 0 – 400 mg/kg
+- **Phosphorus (P)**: 0 – 400 mg/kg
+- **Potassium (K)**: 0 – 400 mg/kg
+- **Air Temperature**: -10 – 55 °C
+- **Relative Humidity**: 10 – 100 %
+- **Soil pH**: 3.5 – 10.0
+- **Annual Rainfall**: 0 – 2500 mm

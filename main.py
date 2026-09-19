@@ -1,374 +1,513 @@
 """
-Farmer Crop Advisory System — Unified Single-Page Application
-Automated crop species detection, foliar disease diagnosis,
-soil suitability prediction, and agronomic prescription generator.
+Farmer Crop Advisory System — Streamlit Application Entry Point.
+Modular, production-grade interface providing:
+1. Dashboard & System Status
+2. Soil & Crop Suitability Advisory (Numerical ML Workflow)
+3. Leaf Disease Detection (Computer Vision Workflow)
+4. Integrated Farm Advisory (Holistic Agronomic Prescriptions)
 """
 
 from __future__ import annotations
 
-import io
+import pathlib
 from typing import Any, Dict, List, Optional
-from PIL import Image, ImageOps
+
+import numpy as np
+import pandas as pd
+from PIL import Image
 import streamlit as st
 
-from src.engine import (
-    TEST_DIR,
-    canonical_crop,
+import config
+from src.analysis import (
     classify_leaf,
-    evaluate_soil_and_crops,
-    generate_advisory,
-    load_artifacts,
-    plot_crop_bars,
-    plot_soil_bars,
-    pretty_crop,
-    setup_device,
+    diagnose_soil,
+    generate_advisory_summary,
+    predict_soil,
+    recommend_crops,
+)
+from src.data_loader import load_crop_data, load_models, load_soil_profiles
+from src.preprocessing import validate_soil_readings
+from src.utils import canonical_crop, pretty_crop, setup_device
+from src.visualization import (
+    format_status_badge,
+    plot_crop_recommendations,
+    plot_soil_parameters_bar,
+    render_advisory,
+    render_disclaimer,
+    render_disease_detection,
+    render_header,
+    render_system_status_sidebar,
+    render_workflow_diagram,
 )
 
 # ============================================================
-# 1. PAGE CONFIGURATION & STYLING
+# 1. PAGE SETUP & CACHED RESOURCES
 # ============================================================
 
 st.set_page_config(
-    page_title="Farmer Crop & Soil Advisory AI",
+    page_title="Farmer Crop Advisory System",
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.markdown(
-    """
-    <style>
-    .metric-card {
-        background: linear-gradient(135deg, #f8fbf9 0%, #e9f5ed 100%);
-        border: 1px solid #cce3d5;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
-    }
-    .section-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #1b4332;
-        margin-bottom: 8px;
-        border-bottom: 2px solid #52b788;
-        padding-bottom: 4px;
-    }
-    div[data-testid="stExpander"] {
-        border-radius: 8px;
-        border: 1px solid #d8e2dc;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# Banner Header
-st.markdown(
-    """
-    <div style="padding: 18px 24px; background: linear-gradient(135deg, #1b4332 0%, #2d6a4f 100%); border-radius: 12px; margin-bottom: 24px; color: white;">
-        <h1 style="color: #d8f3dc; margin: 0; font-size: 2.2rem; font-weight: 700;">🌱 Farmer Crop Advisory System</h1>
-        <p style="color: #b7e4c7; margin: 6px 0 0 0; font-size: 1.05rem;">
-            Production Decision Support: Leaf Disease Diagnosis & Crop-Conditioned Soil Suitability Analysis
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ============================================================
-# 2. HARDWARE & CACHED MODEL INITIALIZATION
-# ============================================================
-
+# Initialize hardware and subtle sidebar status
 gpu_active, device_msg = setup_device()
-with st.sidebar:
-    st.image("https://img.icons8.com/color/96/000000/wheat.png", width=64)
-    st.markdown("### ⚙️ Hardware Status")
-    if gpu_active:
-        st.success(f"🚀 {device_msg}")
-    else:
-        st.info(f"💻 {device_msg}")
-    st.caption("Inference runs seamlessly across CPU and GPU hardware.")
 
+# Load models and profiles once with caching
 try:
-    with st.spinner("Initializing neural network models & caching weights..."):
-        image_model, image_classes, soil_model, soil_profiles = load_artifacts()
+    image_model, image_classes, soil_model = load_models()
+    soil_profiles = load_soil_profiles()
+    models_ready = True
 except Exception as exc:
-    st.error(f"Failed to load neural network artifacts: {exc}")
-    st.stop()
+    models_ready = False
+    image_model = None
+    image_classes = []
+    soil_model = None
+    soil_profiles = {}
+
+render_system_status_sidebar(gpu_active, device_msg, models_ready)
+render_header()
 
 # ============================================================
-# 3. SIDEBAR CONTROLS (SOIL PRESETS)
+# 2. SESSION STATE INITIALIZATION (Zero Empty Screens)
 # ============================================================
 
-with st.sidebar:
-    st.markdown("---")
-    st.markdown("### 🌾 Quick Field Presets")
-    st.caption("Auto-populate field metrics or adjust sliders manually:")
+if "soil_readings" not in st.session_state:
+    st.session_state["soil_readings"] = {
+        "N": 90.0,
+        "P": 42.0,
+        "K": 43.0,
+        "temperature": 25.6,
+        "humidity": 80.0,
+        "ph": 6.5,
+        "rainfall": 200.0,
+    }
 
-    preset_choice = st.selectbox(
-        "Apply Soil Environment Preset:",
-        options=["Custom Inputs", "Tomato Garden", "Corn Field", "Apple Orchard", "Grape Vineyard"],
-        index=1,
+if "target_crop" not in st.session_state:
+    st.session_state["target_crop"] = "tomato"
+
+if "leaf_result" not in st.session_state:
+    st.session_state["leaf_result"] = None
+
+if "leaf_image" not in st.session_state:
+    st.session_state["leaf_image"] = None
+
+# Pre-run default soil analysis if models are ready so screens are immediately populated
+if models_ready and "ranked_crops" not in st.session_state:
+    st.session_state["soil_result"] = predict_soil(
+        soil_model,
+        st.session_state["soil_readings"],
+        st.session_state["target_crop"],
+    )
+    st.session_state["ranked_crops"] = recommend_crops(
+        soil_model,
+        st.session_state["soil_readings"],
+    )
+    st.session_state["diagnostics"] = diagnose_soil(
+        st.session_state["soil_readings"],
+        st.session_state["target_crop"],
+        soil_profiles,
     )
 
-    preset_values = {
-        "Tomato Garden": {"N": 60.0, "P": 50.0, "K": 60.0, "temperature": 25.0, "humidity": 78.0, "ph": 6.2, "rainfall": 120.0},
-        "Corn Field": {"N": 80.0, "P": 45.0, "K": 40.0, "temperature": 24.0, "humidity": 65.0, "ph": 6.5, "rainfall": 85.0},
-        "Apple Orchard": {"N": 25.0, "P": 125.0, "K": 150.0, "temperature": 18.0, "humidity": 70.0, "ph": 6.0, "rainfall": 110.0},
-        "Grape Vineyard": {"N": 20.0, "P": 130.0, "K": 200.0, "temperature": 22.0, "humidity": 80.0, "ph": 6.0, "rainfall": 70.0},
-    }
-    current_preset = preset_values.get(preset_choice, {})
+# ============================================================
+# 3. SIDEBAR NAVIGATION
+# ============================================================
+
+with st.sidebar:
+    st.markdown("## 🧭 Navigation")
+    current_page = st.radio(
+        "Select Advisory Module:",
+        [
+            "🏠 Dashboard",
+            "🧪 Soil & Crop Advisory",
+            "🍃 Leaf Disease Detection",
+            "📋 Integrated Farm Advisory",
+        ],
+        index=0,
+    )
     st.markdown("---")
-    st.caption("Farmer Advisory System v3.0 • Optimized AI Engine")
 
 # ============================================================
-# 4. UNIFIED WORKSPACE (LEAF & SOIL)
+# 4. MODULE 1: DASHBOARD
 # ============================================================
 
-st.markdown(
-    """
-    <div style="background-color: #f1f8f5; border-left: 5px solid #2d6a4f; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
-        <strong>How it works:</strong> Take or upload a photo of your crop's leaf. The AI <strong>automatically identifies the crop species and diagnoses any disease</strong>.
-        It then pairs this with your soil readings to uncover why the disease occurred and prescribe the exact soil adjustments needed.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+if current_page == "🏠 Dashboard":
+    st.markdown("## 📊 Overview & Capabilities")
+    st.markdown(
+        "Welcome to the **Farmer Crop Advisory System**, an intelligent decision-support system "
+        "designed to assist agriculturalists with real-time soil suitability assessment, "
+        "deep learning plant pathology diagnosis, and holistic agronomic prescriptions."
+    )
 
-col_leaf, col_soil = st.columns([1, 1], gap="large")
-
-def load_image_safely(file_or_path: Any) -> Optional[Image.Image]:
-    try:
-        if hasattr(file_or_path, "getvalue"): raw_bytes = file_or_path.getvalue()
-        elif isinstance(file_or_path, (bytes, bytearray)): raw_bytes = file_or_path
-        else:
-            with open(file_or_path, "rb") as f: raw_bytes = f.read()
-        return ImageOps.exif_transpose(Image.open(io.BytesIO(raw_bytes))).convert("RGB")
-    except Exception as err:
-        st.error(f"Error reading image: {err}")
-        return None
-
-# STEP 1: CROP LEAF SPECIMEN
-leaf_img: Optional[Image.Image] = None
-leaf_source_name = ""
-leaf_cache_key: Optional[str] = None
-
-with col_leaf:
-    st.markdown('<div class="section-title">📸 Step 1: Crop Leaf Specimen</div>', unsafe_allow_html=True)
-    st.caption("Upload a leaf photo, pick a demo sample, or snap with your camera:")
-
-    uploaded_file = st.file_uploader("Upload leaf photo (any image format):", type=None, key="leaf_file")
-
-    sample_dict = {
-        "None (Upload My Own)": None,
-        "🍅 Tomato — Early Blight": TEST_DIR / "Tomato - Early Blight",
-        "🌽 Corn — Common Rust": TEST_DIR / "Corn (Maize) - Common Rust",
-        "🫑 Bell Pepper — Bacterial Spot": TEST_DIR / "Bell Pepper - Bacterial Spot",
-        "🍏 Apple — Apple Scab": TEST_DIR / "Apple - Apple Scab",
-        "🥔 Potato — Healthy": TEST_DIR / "Potato - Healthy",
-        "🍇 Grape — Black Rot": TEST_DIR / "Grape - Black Rot",
-        "🍑 Peach — Bacterial Spot": TEST_DIR / "Peach - Bacterial Spot",
-        "🍓 Strawberry — Leaf Scorch": TEST_DIR / "Strawberry - Leaf Scorch",
-    }
-
-    selected_sample = st.selectbox("Or pick an instant verified field specimen to test:", options=list(sample_dict.keys()), index=0)
-    with st.expander("📷 Or take a photo using camera / webcam", expanded=False):
-        camera_file = st.camera_input("Snap picture of crop leaf:", key="leaf_cam")
-
-    if uploaded_file is not None:
-        leaf_img = load_image_safely(uploaded_file)
-        leaf_source_name = uploaded_file.name
-        leaf_cache_key = f"upload_{uploaded_file.name}_{getattr(uploaded_file, 'size', 0)}"
-    elif camera_file is not None:
-        leaf_img = load_image_safely(camera_file)
-        leaf_source_name = "Camera Snapshot"
-        leaf_cache_key = f"camera_{camera_file.name}_{getattr(camera_file, 'size', 0)}"
-    elif selected_sample != "None (Upload My Own)" and sample_dict.get(selected_sample):
-        sample_folder = sample_dict[selected_sample]
-        if sample_folder.exists():
-            files = list(sample_folder.glob("*.jpg")) + list(sample_folder.glob("*.JPG"))
-            if files:
-                leaf_img = load_image_safely(files[0])
-                leaf_source_name = selected_sample
-                leaf_cache_key = f"sample_{selected_sample}"
-
-    leaf_res: Optional[Dict[str, Any]] = None
-    detected_crop_key: Optional[str] = None
-    detected_crop_display: str = "Awaiting Crop Leaf"
-
-    if leaf_img is not None:
-        st.image(leaf_img, caption=f"Specimen: {leaf_source_name}", width=400)
-
-        # Fast Session Cache: Avoids re-running 45MB Vision CNN when user tunes soil sliders
-        if st.session_state.get("last_leaf_key") == leaf_cache_key and "cached_leaf_res" in st.session_state:
-            leaf_res = st.session_state.cached_leaf_res
-        else:
-            with st.spinner("AI analyzing foliar pathology and auto-identifying crop..."):
-                leaf_res = classify_leaf(leaf_img, image_model, image_classes)
-            st.session_state.last_leaf_key = leaf_cache_key
-            st.session_state.cached_leaf_res = leaf_res
-
-        detected_crop_key = leaf_res["crop"]
-        detected_crop_display = leaf_res["crop_display"]
-        disease = leaf_res["disease"]
-        conf_pct = leaf_res["confidence"] * 100.0
-
-        is_h = disease.lower() == "healthy"
-        color = "#2d6a4f" if is_h else "#d62828"
-        icon = "✅" if is_h else "⚠️"
-
-        st.markdown(
-            f"""
-            <div style="background-color: #ffffff; border: 2px solid {color}; border-radius: 8px; padding: 14px 18px; margin-top: 10px;">
-                <div style="font-size: 1.18rem; font-weight: 700; color: #1b4332;">🌾 Auto-Identified Crop: <span style="color: #2d6a4f;">{detected_crop_display}</span></div>
-                <div style="font-size: 1.05rem; font-weight: 600; color: {color}; margin-top: 4px;">{icon} Condition: {disease} ({conf_pct:.1f}% confidence)</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        treatment = leaf_res.get("treatment", {})
-        if treatment and not is_h:
-            with st.expander("📖 Pathology Symptoms & Management Protocols", expanded=False):
-                st.markdown(f"**Observed Symptoms:** {treatment.get('symptoms', 'N/A')}")
-                st.markdown(f"**Cultural Sanitation:** {treatment.get('cultural', 'N/A')}")
-                st.markdown(f"**Targeted Chemical / Biological Spray:** {treatment.get('chemical', 'N/A')}")
-    else:
-        st.session_state.last_leaf_key = None
-        st.session_state.pop("cached_leaf_res", None)
-        st.info("💡 **No crop leaf loaded yet.** Upload a photo, take a picture with your camera, or pick a demo sample above. The AI will automatically identify your crop.")
-
-# STEP 2: FIELD SOIL CONDITIONS
-with col_soil:
-    title_sfx = f"for Auto-Detected {detected_crop_display}" if detected_crop_key else "(Enter Field Measurements)"
-    st.markdown(f'<div class="section-title">🧪 Step 2: Soil & Weather {title_sfx}</div>', unsafe_allow_html=True)
-    st.caption("Enter soil test metrics and climate parameters to evaluate suitability & diagnose deficiencies.")
-
+    # 3 High-Impact Capability Cards
     c1, c2, c3 = st.columns(3)
     with c1:
-        n_val = st.number_input("Nitrogen (N) mg/kg", 0.0, 500.0, float(current_preset.get("N", 60.0)), 2.0, key="soil_n")
-        temp_val = st.number_input("Temperature (°C)", -20.0, 70.0, float(current_preset.get("temperature", 25.0)), 0.5, key="soil_temp")
+        st.markdown(
+            """
+            <div style="background: #ffffff; border: 1px solid #d8f3dc; border-top: 4px solid #2d6a4f; border-radius: 8px; padding: 18px; height: 190px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                <h3 style="color: #1b4332; margin-top: 0; font-size: 1.2rem;">🧪 Soil & Crop Advisory</h3>
+                <p style="color: #495057; font-size: 0.9rem; line-height: 1.4;">
+                    Evaluates 7 soil nutrients and meteorological parameters against 9 empirical crop profiles. Generates suitability scores and alternative crop rankings.
+                </p>
+                <span style="color: #2d6a4f; font-weight: 600; font-size: 0.88rem;">Numerical Deep Learning →</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     with c2:
-        p_val = st.number_input("Phosphorus (P) mg/kg", 0.0, 500.0, float(current_preset.get("P", 50.0)), 2.0, key="soil_p")
-        hum_val = st.number_input("Humidity (%)", 0.0, 100.0, float(current_preset.get("humidity", 78.0)), 1.0, key="soil_hum")
+        st.markdown(
+            """
+            <div style="background: #ffffff; border: 1px solid #d8f3dc; border-top: 4px solid #40916c; border-radius: 8px; padding: 18px; height: 190px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                <h3 style="color: #1b4332; margin-top: 0; font-size: 1.2rem;">🍃 Leaf Disease Detection</h3>
+                <p style="color: #495057; font-size: 0.9rem; line-height: 1.4;">
+                    Computer vision diagnostics trained on 38 pathology classes. Detects disease symptoms with confidence scoring and provides management protocols.
+                </p>
+                <span style="color: #40916c; font-weight: 600; font-size: 0.88rem;">Computer Vision Inference →</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     with c3:
-        k_val = st.number_input("Potassium (K) mg/kg", 0.0, 500.0, float(current_preset.get("K", 60.0)), 2.0, key="soil_k")
-        ph_val = st.number_input("Soil pH (0-14)", 0.0, 14.0, float(current_preset.get("ph", 6.2)), 0.1, key="soil_ph")
-        rain_val = st.number_input("Rainfall (mm)", 0.0, 5000.0, float(current_preset.get("rainfall", 120.0)), 5.0, key="soil_rain")
+        st.markdown(
+            """
+            <div style="background: #ffffff; border: 1px solid #d8f3dc; border-top: 4px solid #52b788; border-radius: 8px; padding: 18px; height: 190px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                <h3 style="color: #1b4332; margin-top: 0; font-size: 1.2rem;">📋 Integrated Farm Advisory</h3>
+                <p style="color: #495057; font-size: 0.9rem; line-height: 1.4;">
+                    Combines foliar pathology and soil conditions to identify environmental infection drivers and prescribe precise corrective nutrient amendments.
+                </p>
+                <span style="color: #52b788; font-weight: 600; font-size: 0.88rem;">Agronomic Prescriptions →</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    soil_readings = {"N": n_val, "P": p_val, "K": k_val, "temperature": temp_val, "humidity": hum_val, "ph": ph_val, "rainfall": rain_val}
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # System Status & Model Information Grid
+    col_sys, col_info = st.columns([1, 1], gap="large")
+    with col_sys:
+        st.markdown("### 🖥️ Operational System Status")
+        st.markdown(
+            f"""
+            - **Plant Pathology Vision Model:** {"🟢 Loaded & Ready" if models_ready else "🔴 Unavailable"}
+            - **Soil Suitability Neural Model:** {"🟢 Loaded & Ready" if models_ready else "🔴 Unavailable"}
+            - **Quantile Diagnostic Profiles:** 🟢 Available (9 Crop Distributions)
+            - **Active Inference Device:** `{"NVIDIA GPU (CUDA Accelerated)" if gpu_active else "CPU (Standard Latency)"}`
+            - **Dataset Repository:** 🟢 Available (`data/raw/crop_recommendation_10000.csv`)
+            """
+        )
+
+    with col_info:
+        st.markdown("### 🔬 Verified Model Architecture")
+        st.markdown(
+            """
+            - **Foliar Pathology Classifier:** `EfficientNetB0` Transfer Architecture (38 Pathology Classes, 224×224 RGB input)
+            - **Soil Suitability Model:** Dual-Input Dense Neural Network with Categorical Crop Embeddings (7 Numerical Features)
+            - **Statistical Engine:** Precomputed Empirical Quantiles (`p10`, `p25`, `median`, `p75`, `p90`)
+            """
+        )
+
+    # Workflow Architecture Diagram
+    render_workflow_diagram()
+    render_disclaimer()
 
 # ============================================================
-# 5. INTEGRATED ADVISORY & PRESCRIPTIONS
+# 5. MODULE 2: SOIL & CROP ADVISORY
 # ============================================================
 
-st.markdown("---")
+elif current_page == "🧪 Soil & Crop Advisory":
+    st.markdown("## 🧪 Soil & Crop Advisory")
+    st.caption("Numerical ML Workflow: Evaluates soil fertility and climatic conditions to compute crop suitability scores.")
 
-badge_colors = {"GOOD": "#2d6a4f", "ACCEPTABLE": "#1d3557", "NEEDS ATTENTION": "#e76f51", "NOT SUITABLE": "#d62828"}
+    with st.expander("📝 Enter Soil & Meteorological Parameters", expanded=True):
+        sc1, sc2, sc3 = st.columns(3)
+        with sc1:
+            nitrogen = st.number_input(
+                "Nitrogen (N) [mg/kg]:",
+                min_value=0.0,
+                max_value=300.0,
+                value=float(st.session_state["soil_readings"]["N"]),
+                step=1.0,
+            )
+            phosphorus = st.number_input(
+                "Phosphorus (P) [mg/kg]:",
+                min_value=0.0,
+                max_value=300.0,
+                value=float(st.session_state["soil_readings"]["P"]),
+                step=1.0,
+            )
+            potassium = st.number_input(
+                "Potassium (K) [mg/kg]:",
+                min_value=0.0,
+                max_value=300.0,
+                value=float(st.session_state["soil_readings"]["K"]),
+                step=1.0,
+            )
 
-if detected_crop_key and leaf_res:
-    target_crop = detected_crop_key
-    soil_res, ranked_crops, diagnostics = evaluate_soil_and_crops(soil_readings, target_crop, soil_model, soil_profiles)
-    advisory = generate_advisory(leaf_res, soil_res, diagnostics, ranked_crops, soil_readings)
+        with sc2:
+            temperature = st.number_input(
+                "Air Temperature [°C]:",
+                min_value=-10.0,
+                max_value=50.0,
+                value=float(st.session_state["soil_readings"]["temperature"]),
+                step=0.5,
+            )
+            humidity = st.number_input(
+                "Relative Humidity [%]:",
+                min_value=10.0,
+                max_value=100.0,
+                value=float(st.session_state["soil_readings"]["humidity"]),
+                step=1.0,
+            )
+            ph = st.number_input(
+                "Soil pH (0 - 14):",
+                min_value=3.5,
+                max_value=10.0,
+                value=float(st.session_state["soil_readings"]["ph"]),
+                step=0.1,
+            )
 
-    badge_color = badge_colors.get(soil_res["status"], "#6c757d")
-    st.markdown(
-        f"""
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-            <h2 style="margin: 0; color: #1b4332;">🚜 Complete Advisory & Soil Prescription: {pretty_crop(target_crop)}</h2>
-            <span style="background-color: {badge_color}; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-weight: 700;">{soil_res['status']}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        with sc3:
+            rainfall = st.number_input(
+                "Annual Rainfall [mm]:",
+                min_value=0.0,
+                max_value=2500.0,
+                value=float(st.session_state["soil_readings"]["rainfall"]),
+                step=5.0,
+            )
+            target_crop_sel = st.selectbox(
+                "Primary Field Crop:",
+                options=config.SOIL_CROPS,
+                index=config.SOIL_CROPS.index(st.session_state["target_crop"]) if st.session_state["target_crop"] in config.SOIL_CROPS else 0,
+                format_func=pretty_crop,
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+            analyze_btn = st.button("⚡ Run Soil & Crop Analysis", use_container_width=True, type="primary")
 
-    # 3 Primary KPI Cards
-    kpi1, kpi2, kpi3 = st.columns(3)
-    with kpi1:
-        is_h = leaf_res["disease"].lower() == "healthy"
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div style="font-size: 0.85rem; color: #6c757d; font-weight: 600; text-transform: uppercase;">Auto-Detected Pathology</div>
-                <div style="font-size: 1.35rem; font-weight: 700; color: #1b4332;">{pretty_crop(target_crop)}</div>
-                <div style="font-size: 0.95rem; font-weight: 600; margin-top: 4px; color: {'#2d6a4f' if is_h else '#d62828'};">
-                    {leaf_res['disease']} ({leaf_res['confidence']*100:.1f}%)
+    # Update state readings
+    updated_readings = {
+        "N": float(nitrogen),
+        "P": float(phosphorus),
+        "K": float(potassium),
+        "temperature": float(temperature),
+        "humidity": float(humidity),
+        "ph": float(ph),
+        "rainfall": float(rainfall),
+    }
+    st.session_state["soil_readings"] = updated_readings
+    st.session_state["target_crop"] = target_crop_sel
+
+    # Trigger or display analysis
+    if models_ready:
+        if analyze_btn or "soil_result" not in st.session_state:
+            with st.spinner("Computing neural suitability and empirical quantile deviations..."):
+                st.session_state["soil_result"] = predict_soil(soil_model, updated_readings, target_crop_sel)
+                st.session_state["ranked_crops"] = recommend_crops(soil_model, updated_readings)
+                st.session_state["diagnostics"] = diagnose_soil(updated_readings, target_crop_sel, soil_profiles)
+
+        soil_res = st.session_state["soil_result"]
+        ranked_crops = st.session_state["ranked_crops"]
+        diagnostics = st.session_state["diagnostics"]
+
+        st.markdown("---")
+        st.markdown("### 🏆 Recommended Crop Rankings")
+        
+        # Display top-3 recommended crops as cards
+        top_3 = ranked_crops[:3]
+        rc1, rc2, rc3 = st.columns(3)
+        cols = [rc1, rc2, rc3]
+        for idx, (col, item) in enumerate(zip(cols, top_3)):
+            with col:
+                badge = format_status_badge(item["status"])
+                st.markdown(
+                    f"""
+                    <div style="background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                        <span style="font-size: 0.85rem; color: #6c757d; font-weight: bold;">RANK #{idx + 1}</span>
+                        <h3 style="margin: 4px 0; color: #1b4332;">{item['crop_display']}</h3>
+                        <div style="font-size: 1.6rem; font-weight: 700; color: #2d6a4f; margin: 4px 0;">{item['score']:.1f}%</div>
+                        <div>{badge}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Diagnostics & Analytics Tabs
+        tab_ranks, tab_params = st.tabs(["📊 Crop Suitability Ranking", "📈 Nutrient & Climate Diagnostics"])
+        with tab_ranks:
+            fig_ranks = plot_crop_recommendations(ranked_crops)
+            if fig_ranks:
+                st.pyplot(fig_ranks, use_container_width=True)
+
+        with tab_params:
+            if diagnostics:
+                fig_diag = plot_soil_parameters_bar(diagnostics)
+                if fig_diag:
+                    st.pyplot(fig_diag, use_container_width=True)
+
+                st.markdown("#### Detailed Diagnostic Metrics")
+                df_diag = pd.DataFrame(diagnostics)
+                st.dataframe(
+                    df_diag[["Parameter", "Value", "Optimal_Range", "Status", "Analysis"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No empirical quantile distribution profile found for the selected crop.")
+
+    render_disclaimer()
+
+# ============================================================
+# 6. MODULE 3: LEAF DISEASE DETECTION
+# ============================================================
+
+elif current_page == "🍃 Leaf Disease Detection":
+    st.markdown("## 🍃 Leaf Disease Detection")
+    st.caption("Computer Vision Workflow: Evaluates foliar imagery using EfficientNetB0 to diagnose pathology and recommend protocols.")
+
+    col_input, col_pred = st.columns([1, 1], gap="large")
+
+    with col_input:
+        st.markdown("### 📷 Select or Upload Foliar Image")
+        source_mode = st.radio(
+            "Image Input Source:",
+            ["Dataset Sample Library", "Upload Image File"],
+            horizontal=True,
+        )
+
+        chosen_image: Optional[Image.Image] = None
+
+        if source_mode == "Dataset Sample Library":
+            sample_files: List[pathlib.Path] = []
+            if config.TEST_DIR.exists():
+                for ext in ("*.jpg", "*.jpeg", "*.JPG", "*.png"):
+                    sample_files.extend(list(config.TEST_DIR.rglob(ext)))
+
+            if sample_files:
+                sample_map = {p.name: p for p in sorted(sample_files)[:30]}
+                selected_sample = st.selectbox("Choose a test sample leaf:", list(sample_map.keys()))
+                if selected_sample:
+                    chosen_image = Image.open(sample_map[selected_sample])
+            else:
+                st.info("Dataset samples directory data/raw/Plant Village Dataset/Test not found.")
+
+        else:
+            uploaded_file = st.file_uploader(
+                "Upload a leaf image (JPEG, PNG):",
+                type=["jpg", "jpeg", "png"],
+            )
+            if uploaded_file is not None:
+                chosen_image = Image.open(uploaded_file)
+
+        if chosen_image is not None:
+            st.session_state["leaf_image"] = chosen_image
+            st.image(chosen_image, caption="Active Leaf Inspection Photo", use_container_width=True)
+            analyze_leaf_btn = st.button("🔬 Analyze Leaf Pathology", type="primary", use_container_width=True)
+        else:
+            analyze_leaf_btn = False
+
+    with col_pred:
+        if st.session_state["leaf_image"] is not None and models_ready:
+            if analyze_leaf_btn or st.session_state["leaf_result"] is None:
+                with st.spinner("Running EfficientNetB0 vision inference..."):
+                    leaf_res = classify_leaf(image_model, st.session_state["leaf_image"], image_classes)
+                    st.session_state["leaf_result"] = leaf_res
+                    if leaf_res["crop"] in config.SOIL_CROPS:
+                        st.session_state["target_crop"] = leaf_res["crop"]
+
+            render_disease_detection(st.session_state["leaf_result"])
+        else:
+            st.info("👈 Please select a test sample image or upload a photograph to view diagnosis.")
+
+    render_disclaimer()
+
+# ============================================================
+# 7. MODULE 4: INTEGRATED FARM ADVISORY
+# ============================================================
+
+elif current_page == "📋 Integrated Farm Advisory":
+    st.markdown("## 📋 Integrated Farm Advisory Report")
+    st.caption("Holistic Agronomic Decision Support: Fuses vision pathology detection with soil suitability modeling into actionable prescriptions.")
+
+    if models_ready:
+        # Refresh current calculations
+        target_crop = st.session_state["target_crop"]
+        readings = st.session_state["soil_readings"]
+        soil_res = predict_soil(soil_model, readings, target_crop)
+        ranked = recommend_crops(soil_model, readings)
+        diagnostics = diagnose_soil(readings, target_crop, soil_profiles)
+        leaf_res = st.session_state["leaf_result"]
+
+        advisory = generate_advisory_summary(
+            leaf_result=leaf_res,
+            soil_result=soil_res,
+            diagnostics=diagnostics,
+            top_crops=ranked,
+            values=readings,
+        )
+
+        # Overview Summary Banner
+        s1, s2, s3 = st.columns(3)
+        with s1:
+            st.markdown(
+                f"""
+                <div style="background: #ffffff; border: 1px solid #dee2e6; border-left: 5px solid #2d6a4f; padding: 14px; border-radius: 6px;">
+                    <div style="color: #6c757d; font-size: 0.85rem; font-weight: 600;">ACTIVE TARGET CROP</div>
+                    <h3 style="margin: 4px 0; color: #1b4332;">{pretty_crop(target_crop)}</h3>
+                    <span style="font-size: 0.85rem; color: #495057;">Suitability: <strong>{soil_res['score']:.1f}/100</strong></span>
                 </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with kpi2:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div style="font-size: 0.85rem; color: #6c757d; font-weight: 600; text-transform: uppercase;">Soil Suitability Score</div>
-                <div style="font-size: 1.35rem; font-weight: 700; color: #1b4332;">{soil_res['score']:.1f} / 100</div>
-                <div style="font-size: 0.95rem; font-weight: 600; margin-top: 4px; color: #2d6a4f;">Rating: {soil_res['status']}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with kpi3:
-        deviated = len([d for d in diagnostics if d["Status"] != "NORMAL"])
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div style="font-size: 0.85rem; color: #6c757d; font-weight: 600; text-transform: uppercase;">Nutrient Status</div>
-                <div style="font-size: 1.35rem; font-weight: 700; color: #1b4332;">{deviated} Parameter Deviations</div>
-                <div style="font-size: 0.95rem; font-weight: 600; margin-top: 4px; color: {'#2d6a4f' if deviated == 0 else '#e76f51'};">
-                    {'Optimal Profile' if deviated == 0 else 'Amendments Needed'}
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with s2:
+            soil_badge = format_status_badge(soil_res["status"])
+            st.markdown(
+                f"""
+                <div style="background: #ffffff; border: 1px solid #dee2e6; border-left: 5px solid #1d3557; padding: 14px; border-radius: 6px;">
+                    <div style="color: #6c757d; font-size: 0.85rem; font-weight: 600;">SOIL ENVIRONMENT STATUS</div>
+                    <div style="margin: 6px 0;">{soil_badge}</div>
+                    <span style="font-size: 0.85rem; color: #495057;">Based on 7 soil & climate features</span>
                 </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    # Root causes & Prescriptions
-    if advisory.get("disease_causes"):
-        st.markdown("#### 🔬 Root Cause: Environmental & Soil Drivers")
-        for cause in advisory["disease_causes"]:
-            st.markdown(f"- ⚠️ **{cause}**")
+        with s3:
+            disease_display = leaf_res["disease"] if leaf_res else "No Leaf Inspected (Defaulting to Healthy)"
+            disease_badge = format_status_badge("NORMAL" if "healthy" in disease_display.lower() else "NEEDS ATTENTION")
+            st.markdown(
+                f"""
+                <div style="background: #ffffff; border: 1px solid #dee2e6; border-left: 5px solid #e76f51; padding: 14px; border-radius: 6px;">
+                    <div style="color: #6c757d; font-size: 0.85rem; font-weight: 600;">FOLIAR PATHOLOGY STATUS</div>
+                    <h4 style="margin: 4px 0; color: #1b4332;">{disease_display}</h4>
+                    <div style="margin-top: 2px;">{disease_badge}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    if advisory.get("prescriptions"):
-        st.markdown(f"#### 🧪 Target Soil Concentrations & Prescription for {pretty_crop(target_crop)}")
-        import pandas as pd
-        st.dataframe(pd.DataFrame(advisory["prescriptions"]), use_container_width=True, hide_index=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    if advisory.get("recommendations"):
-        st.markdown("#### 📋 Actionable Field Guidelines")
-        for rec in advisory["recommendations"]:
-            st.markdown(f"- **{rec}**")
+        # Full Rendered Advisory Sections
+        render_advisory(advisory)
 
-    # Analytical Charts
-    res_col1, res_col2 = st.columns([1.1, 0.9], gap="medium")
-    with res_col1:
-        st.markdown(f"#### 📊 Measured Readings vs Ideal Range for {pretty_crop(target_crop)}")
-        fig_bars = plot_soil_bars(diagnostics)
-        if fig_bars: st.pyplot(fig_bars, clear_figure=True)
-    with res_col2:
-        st.markdown("#### 🔄 Alternative Best Crops for this Soil")
-        fig_crops = plot_crop_bars(ranked_crops)
-        if fig_crops: st.pyplot(fig_crops, clear_figure=True)
-else:
-    st.markdown(
-        """
-        <div style="text-align: center; padding: 30px; background-color: #f8fbf9; border: 2px dashed #b7e4c7; border-radius: 12px; margin-bottom: 24px;">
-            <h3 style="color: #2d6a4f; margin-bottom: 8px;">📸 Awaiting Crop Leaf Specimen</h3>
-            <p style="color: #555; font-size: 1.05rem; max-width: 600px; margin: 0 auto 16px auto;">
-                Please upload a photo of your crop's leaf, snap one with your camera, or pick a sample specimen above.
-                <strong>The AI will automatically identify your crop</strong>, diagnose any disease, and generate the tailored soil prescription.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.markdown("---")
+        st.markdown("#### 🌾 Crop Rotation & Alternative Opportunities")
+        alt_crop = ranked[0]
+        if alt_crop["crop"] != canonical_crop(target_crop):
+            st.info(
+                f"**Crop Rotation Strategy:** For your current measured field soil and meteorological conditions, "
+                f"**{alt_crop['crop_display']}** achieves the highest natural suitability score of **{alt_crop['score']:.1f}%**. "
+                f"Consider rotational planting to naturally break pathogen cycles and maximize nutrient efficiency."
+            )
+        else:
+            st.success(
+                f"Your selected crop **{pretty_crop(target_crop)}** is already the top-performing match for this soil environment."
+            )
 
-    st.markdown("#### 🔄 General Soil Suitability (Based on Entered Field Metrics)")
-    st.caption("Here is how your current soil and weather metrics match candidate crops before leaf identification:")
-    _, general_crops, _ = evaluate_soil_and_crops(soil_readings, "tomato", soil_model, soil_profiles)
-    fig_gen = plot_crop_bars(general_crops)
-    if fig_gen: st.pyplot(fig_gen, clear_figure=True)
-
-st.markdown("---")
-st.caption("🌱 Farmer Crop Advisory System | EfficientNetB0 Vision Pathology + Dual-Input Neural Suitability Engine")
+    render_disclaimer()

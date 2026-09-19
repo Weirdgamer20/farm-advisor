@@ -1,3 +1,3 @@
 """
-Unit test suite for Farmer Crop Advisory System.
+Unit and integration test suite for Farmer Crop Advisory System.
 """
