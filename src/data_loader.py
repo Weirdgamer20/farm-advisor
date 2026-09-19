@@ -112,17 +112,20 @@ def load_models(
     try:
         image_model = tf.keras.models.load_model(target_image_model_path)
     except Exception as exc:
+        logger.error(f"Failed loading vision model from {target_image_model_path}: {exc}", exc_info=True)
         raise RuntimeError(f"Failed loading vision model from {target_image_model_path}: {exc}")
 
     try:
         soil_model = tf.keras.models.load_model(soil_model_path)
     except Exception as exc:
+        logger.error(f"Failed loading soil model from {soil_model_path}: {exc}", exc_info=True)
         raise RuntimeError(f"Failed loading soil model from {soil_model_path}: {exc}")
 
     try:
         with image_classes_path.open("r", encoding="utf-8") as f:
             image_classes: List[str] = json.load(f)
     except Exception as exc:
+        logger.error(f"Failed reading disease classes from {image_classes_path}: {exc}", exc_info=True)
         raise RuntimeError(f"Failed reading disease classes from {image_classes_path}: {exc}")
 
     if image_model.output_shape[-1] != len(image_classes):

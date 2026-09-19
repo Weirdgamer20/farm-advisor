@@ -10,6 +10,7 @@ Modular, production-grade interface providing:
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Dict, Optional
 
 import pandas as pd
@@ -44,7 +45,9 @@ from src.visualization import (
     render_workflow_diagram,
 )
 
-# 1. Page Configuration & System Setup
+logger = logging.getLogger(__name__)
+
+# 1. Page Configuration & Header
 st.set_page_config(
     page_title="Farmer Crop Advisory System",
     page_icon="🌱",
@@ -52,30 +55,40 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 inject_custom_theme()
+render_header()
 
+# 2. Hardware Acceleration & Artifact Inspection
 gpu_active, device_msg = setup_device()
 telemetry = check_artifact_availability()
 
+# 3. Controlled Model Initialization with Clear Visual State
 models_ready = False
 model_init_error: Optional[str] = None
-try:
-    image_model, image_classes, soil_model = load_models(warmup=False)
-    soil_profiles = load_soil_profiles()
-    models_ready = True
-except Exception as exc:
-    model_init_error = str(exc)
-    image_model, image_classes, soil_model, soil_profiles = None, [], None, {}
+
+with st.spinner("Initializing pre-trained neural models & verifying runtime artifacts..."):
+    try:
+        image_model, image_classes, soil_model = load_models(warmup=False)
+        soil_profiles = load_soil_profiles()
+        models_ready = True
+    except Exception as exc:
+        model_init_error = str(exc)
+        logger.error(f"Application model initialization failed: {exc}", exc_info=True)
+        image_model, image_classes, soil_model, soil_profiles = None, [], None, {}
 
 render_system_status_sidebar(gpu_active, device_msg, models_ready, detailed_telemetry=telemetry)
-render_header()
 
 if not models_ready and model_init_error:
-    st.error("⚠️ **Model Artifact Notice:** One or more pre-trained neural networks could not be loaded.")
-    with st.expander("🛠️ View Detailed Initialization Diagnostics"):
+    st.error("⚠️ **Model Artifact Notice:** One or more pre-trained neural networks could not be initialized.")
+    with st.expander("🛠️ View Initialization Diagnostics & Troubleshooting", expanded=True):
         st.code(model_init_error)
-        st.markdown("Ensure model artifacts are placed in the `models/` directory.")
+        st.markdown(
+            "**Remediation Steps:**\n"
+            "- Confirm that `models/plant_disease_model.keras` and `models/soil_condition_model.keras` exist.\n"
+            "- Verify that `models/plant_disease_classes.json` contains valid JSON taxonomy classes.\n"
+            "- Ensure TensorFlow runtime matches model architecture specifications."
+        )
 
-# 2. State Management
+# 4. Session State Management
 session_defaults = {
     "soil_readings": {"N": 90.0, "P": 42.0, "K": 43.0, "temperature": 25.6, "humidity": 80.0, "ph": 6.5, "rainfall": 200.0},
     "target_crop": "tomato",
@@ -85,6 +98,7 @@ session_defaults = {
     "ranked_crops": None,
     "diagnostics": None,
     "cached_soil_hash": None,
+    "cached_leaf_hash": None,
 }
 for key, val in session_defaults.items():
     st.session_state.setdefault(key, val)
@@ -96,7 +110,7 @@ def compute_soil_hash(crop: str, readings: Dict[str, float]) -> str:
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
-# 3. Sidebar Navigation
+# 5. Sidebar Navigation
 with st.sidebar:
     st.markdown("## 🧭 Navigation")
     current_page = st.radio(
@@ -106,7 +120,7 @@ with st.sidebar:
     )
     st.markdown("---")
 
-# 4. Module 1: Dashboard
+# 6. Module 1: Dashboard
 if current_page == "🏠 Dashboard":
     st.markdown("## 📊 Overview & Capabilities")
     st.markdown(
@@ -157,7 +171,7 @@ if current_page == "🏠 Dashboard":
     render_workflow_diagram()
     render_disclaimer()
 
-# 5. Module 2: Soil & Crop Advisory
+# 7. Module 2: Soil & Crop Advisory
 elif current_page == "🧪 Soil & Crop Advisory":
     st.markdown("## 🧪 Soil & Crop Advisory")
     st.caption("Numerical ML Workflow: Evaluates soil fertility and climate measurements against empirical crop profiles.")
@@ -191,8 +205,9 @@ elif current_page == "🧪 Soil & Crop Advisory":
     st.session_state["target_crop"] = target_crop_sel
     current_hash = compute_soil_hash(target_crop_sel, current_readings)
 
+    # Strictly on-demand inference: only runs when user clicks button
     if models_ready:
-        if analyze_btn or st.session_state["soil_result"] is None:
+        if analyze_btn:
             if st.session_state["cached_soil_hash"] != current_hash:
                 with st.spinner("Executing neural suitability inference & quantile diagnostics..."):
                     st.session_state["soil_result"] = predict_soil(soil_model, current_readings, target_crop_sel)
@@ -241,11 +256,11 @@ elif current_page == "🧪 Soil & Crop Advisory":
                 else:
                     st.info("No empirical quantile distribution profile found for the selected crop.")
         else:
-            st.info("💡 Adjust soil parameters above and click **Run Soil & Crop Analysis** to compute suitability.")
+            st.info("💡 Adjust soil parameters above and click **⚡ Run Soil & Crop Analysis** to compute suitability.")
 
     render_disclaimer()
 
-# 6. Module 3: Leaf Disease Detection
+# 8. Module 3: Leaf Disease Detection
 elif current_page == "🍃 Leaf Disease Detection":
     st.markdown("## 🍃 Leaf Disease Detection")
     st.caption("Computer Vision Workflow: Evaluates foliar imagery using EfficientNetB0 to diagnose pathology and recommend protocols.")
@@ -274,25 +289,32 @@ elif current_page == "🍃 Leaf Disease Detection":
             st.session_state["leaf_image"] = chosen_image
             st.image(chosen_image, caption="Active Leaf Inspection Photo", use_container_width=True)
             analyze_leaf_btn = st.button("🔬 Analyze Leaf Pathology", type="primary", use_container_width=True)
+            img_hash = hashlib.md5(chosen_image.tobytes()).hexdigest()
         else:
             analyze_leaf_btn = False
+            img_hash = None
 
     with col_pred:
         if st.session_state["leaf_image"] is not None and models_ready:
-            if analyze_leaf_btn or st.session_state["leaf_result"] is None:
-                with st.spinner("Running EfficientNetB0 vision inference..."):
-                    leaf_res = classify_leaf(image_model, st.session_state["leaf_image"], image_classes)
-                    st.session_state["leaf_result"] = leaf_res
-                    if leaf_res["crop"] in config.SOIL_CROPS:
-                        st.session_state["target_crop"] = leaf_res["crop"]
+            if analyze_leaf_btn:
+                if st.session_state.get("cached_leaf_hash") != img_hash:
+                    with st.spinner("Running EfficientNetB0 vision inference..."):
+                        leaf_res = classify_leaf(image_model, st.session_state["leaf_image"], image_classes)
+                        st.session_state["leaf_result"] = leaf_res
+                        st.session_state["cached_leaf_hash"] = img_hash
+                        if leaf_res["crop"] in config.SOIL_CROPS:
+                            st.session_state["target_crop"] = leaf_res["crop"]
 
-            render_disease_detection(st.session_state["leaf_result"])
+            if st.session_state["leaf_result"]:
+                render_disease_detection(st.session_state["leaf_result"])
+            else:
+                st.info("👆 Click **🔬 Analyze Leaf Pathology** to evaluate foliar health.")
         else:
             st.info("👈 Select a sample leaf or upload a photograph and click **Analyze Leaf Pathology** to inspect.")
 
     render_disclaimer()
 
-# 7. Module 4: Integrated Farm Advisory
+# 9. Module 4: Integrated Farm Advisory
 elif current_page == "📋 Integrated Farm Advisory":
     st.markdown("## 📋 Integrated Farm Advisory Report")
     st.caption("Holistic Decision Support: Correlates vision pathology detection with soil suitability modeling into actionable field prescriptions.")
@@ -302,57 +324,64 @@ elif current_page == "📋 Integrated Farm Advisory":
         readings = st.session_state["soil_readings"]
 
         if st.session_state["soil_result"] is None:
-            with st.spinner("Synthesizing current soil readings and empirical quantiles..."):
-                st.session_state["soil_result"] = predict_soil(soil_model, readings, target_crop)
-                st.session_state["ranked_crops"] = recommend_crops(soil_model, readings)
-                st.session_state["diagnostics"] = diagnose_soil(readings, target_crop, soil_profiles)
+            st.info("💡 No soil analysis has been generated yet for this session.")
+            col_act, _ = st.columns([1, 1])
+            with col_act:
+                generate_now = st.button("⚡ Synthesize Field Data & Generate Report", type="primary")
+            if generate_now:
+                with st.spinner("Synthesizing field soil readings and empirical quantiles..."):
+                    st.session_state["soil_result"] = predict_soil(soil_model, readings, target_crop)
+                    st.session_state["ranked_crops"] = recommend_crops(soil_model, readings)
+                    st.session_state["diagnostics"] = diagnose_soil(readings, target_crop, soil_profiles)
+                    st.rerun()
 
         soil_res = st.session_state["soil_result"]
         ranked = st.session_state["ranked_crops"]
         diagnostics = st.session_state["diagnostics"]
         leaf_res = st.session_state["leaf_result"]
 
-        advisory = generate_advisory_summary(
-            leaf_result=leaf_res,
-            soil_result=soil_res,
-            diagnostics=diagnostics,
-            top_crops=ranked,
-            values=readings,
-        )
-
-        disease_display = leaf_res["disease"] if leaf_res else "No Leaf Analyzed (Presuming Baseline)"
-        disease_badge = format_status_badge("NORMAL" if "healthy" in disease_display.lower() else "NEEDS ATTENTION")
-
-        summary_cards = [
-            ("PRIMARY TARGET CROP", pretty_crop(target_crop), f"Suitability: <strong>{soil_res['score']:.1f} / 100</strong>", "#2d6a4f"),
-            ("SOIL ENVIRONMENT STATUS", format_status_badge(soil_res["status"]), "Conditioned on 7 soil & climate features", "#1d3557"),
-            ("FOLIAR PATHOLOGY STATUS", f"<div style='font-size: 1.1rem; font-weight: 700; color: #1b4332; margin: 4px 0;'>{disease_display}</div>{disease_badge}", "Pathology assessment", "#e76f51"),
-        ]
-
-        for col, (label, content, footer, border_color) in zip(st.columns(3), summary_cards):
-            with col:
-                st.markdown(
-                    f"""<div class="advisory-card" style="border-left: 5px solid {border_color};">
-                        <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">{label}</div>
-                        <div style="font-size: 1.3rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{content}</div>
-                        <span style="font-size: 0.85rem; color: #495057;">{footer}</span>
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        render_advisory(advisory)
-
-        st.markdown("---")
-        st.markdown("#### 🌾 Crop Rotation & Agro-Ecological Optimization")
-        alt_crop = ranked[0]
-        if alt_crop["crop"] != canonical_crop(target_crop):
-            st.info(
-                f"**Crop Rotation Strategy:** For your current measured field soil and meteorological conditions, "
-                f"**{alt_crop['crop_display']}** achieves the highest natural suitability score of **{alt_crop['score']:.1f}%**. "
-                f"Consider rotational planting to naturally break pathogen cycles and maximize nutrient efficiency."
+        if soil_res and ranked and diagnostics:
+            advisory = generate_advisory_summary(
+                leaf_result=leaf_res,
+                soil_result=soil_res,
+                diagnostics=diagnostics,
+                top_crops=ranked,
+                values=readings,
             )
-        else:
-            st.success(f"Your selected crop **{pretty_crop(target_crop)}** is currently the top-performing match ({soil_res['score']:.1f}%) for this soil environment.")
+
+            disease_display = leaf_res["disease"] if leaf_res else "No Leaf Analyzed (Presuming Baseline)"
+            disease_badge = format_status_badge("NORMAL" if "healthy" in disease_display.lower() else "NEEDS ATTENTION")
+
+            summary_cards = [
+                ("PRIMARY TARGET CROP", pretty_crop(target_crop), f"Suitability: <strong>{soil_res['score']:.1f} / 100</strong>", "#2d6a4f"),
+                ("SOIL ENVIRONMENT STATUS", format_status_badge(soil_res["status"]), "Conditioned on 7 soil & climate features", "#1d3557"),
+                ("FOLIAR PATHOLOGY STATUS", f"<div style='font-size: 1.1rem; font-weight: 700; color: #1b4332; margin: 4px 0;'>{disease_display}</div>{disease_badge}", "Pathology assessment", "#e76f51"),
+            ]
+
+            for col, (label, content, footer, border_color) in zip(st.columns(3), summary_cards):
+                with col:
+                    st.markdown(
+                        f"""<div class="advisory-card" style="border-left: 5px solid {border_color};">
+                            <div style="color: #6c757d; font-size: 0.82rem; font-weight: 700;">{label}</div>
+                            <div style="font-size: 1.3rem; font-weight: 700; color: #1b4332; margin: 4px 0;">{content}</div>
+                            <span style="font-size: 0.85rem; color: #495057;">{footer}</span>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            render_advisory(advisory)
+
+            st.markdown("---")
+            st.markdown("#### 🌾 Crop Rotation & Agro-Ecological Optimization")
+            alt_crop = ranked[0]
+            if alt_crop["crop"] != canonical_crop(target_crop):
+                st.info(
+                    f"**Crop Rotation Strategy:** For your current measured field soil and meteorological conditions, "
+                    f"**{alt_crop['crop_display']}** achieves the highest natural suitability score of **{alt_crop['score']:.1f}%**. "
+                    f"Consider rotational planting to naturally break pathogen cycles and maximize nutrient efficiency."
+                )
+            else:
+                st.success(f"Your selected crop **{pretty_crop(target_crop)}** is currently the top-performing match ({soil_res['score']:.1f}%) for this soil environment.")
 
     render_disclaimer()
